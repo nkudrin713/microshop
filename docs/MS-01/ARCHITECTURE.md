@@ -62,13 +62,21 @@ docs/MS-01/
 
 ## Конфигурация и проверки
 
-MS-01-01 задает только имя приложения. Подключение к БД, SQL-миграции,
-`ddl-auto=validate` и отключение Open EntityManager in View реализуются
-в MS-01-03 по [DATA_MODEL.md](../DATA_MODEL.md).
+Подключение к PostgreSQL задается внешними `spring.datasource.*`, в том числе
+переменными `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME` и
+`SPRING_DATASOURCE_PASSWORD`; credentials в исходниках отсутствуют.
+Flyway при старте применяет SQL из `classpath:db/migration` и проверяет
+checksums. Hibernate работает с `ddl-auto=validate`; Open EntityManager in View
+и инициализация через `schema.sql`/`data.sql` отключены.
+
+В MS-01-03 миграция `V1__create_admin_user.sql` создает `admin_user` по
+[DATA_MODEL.md](../DATA_MODEL.md), без владельца, setup и входа. Имена миграций
+имеют вид `V<N>__<description>.sql`; примененные версии неизменяемы.
 
 Исходники тестов находятся отдельно от production-кода. MS-01-02 добавляет
-узкий JDBC-тест на контейнерной PostgreSQL. Компиляция и сборка исполняемого
-JAR проверяют результат MS-01-01; они не доказывают успешный запуск приложения с PostgreSQL.
+узкий JDBC-тест на контейнерной PostgreSQL. MS-01-03 проверяет старт полного
+приложения, повторный старт на той же БД, ограничения таблицы и ошибку миграции.
+Одна компиляция или сборка JAR не доказывает успешный запуск с PostgreSQL.
 БД-зависимые автоконфигурации не отключаются ради фиктивного успешного запуска.
 
 Тестовый образ зафиксирован как `postgres:18.6`, без `latest`; PostgreSQL 18

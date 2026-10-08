@@ -27,12 +27,12 @@
 | Persistence | Spring Data JPA, Hibernate, PostgreSQL JDBC driver |
 | Миграции | Flyway с модулем PostgreSQL |
 | Диагностика | Spring Boot Actuator |
-| Тестирование | JUnit, Kotlin Test, Spring Test и MockMvc |
+| Тестирование | JUnit, Kotlin Test, Spring Test, MockMvc, Testcontainers PostgreSQL |
 
 Зависимости библиотек управляются BOM Spring Boot; их отдельные версии
 не задаются. Версии Kotlin-библиотек согласуются с Kotlin Gradle plugin
-механизмом Spring Boot. Testcontainers и конфигурация тестовой PostgreSQL
-добавляются в MS-01-02.
+механизмом Spring Boot. Для тестов подключены `spring-boot-testcontainers`
+и `testcontainers-postgresql`; версия Testcontainers 2.0.5 управляется BOM.
 
 Совместимость инструментов сверена с [требованиями Spring Boot](https://docs.spring.io/spring-boot/system-requirements.html)
 и [таблицей совместимости Kotlin Gradle plugin](https://kotlinlang.org/docs/gradle-configure-project.html).
@@ -66,10 +66,22 @@ MS-01-01 задает только имя приложения. Подключе
 `ddl-auto=validate` и отключение Open EntityManager in View реализуются
 в MS-01-03 по [DATA_MODEL.md](../DATA_MODEL.md).
 
-Исходники тестов находятся отдельно от production-кода. В каркасе пока нет
-тестов бизнес-поведения или контекста с БД. Компиляция и сборка исполняемого
-JAR проверяют результат MS-01-01; они не доказывают успешный запуск с PostgreSQL.
+Исходники тестов находятся отдельно от production-кода. MS-01-02 добавляет
+узкий JDBC-тест на контейнерной PostgreSQL. Компиляция и сборка исполняемого
+JAR проверяют результат MS-01-01; они не доказывают успешный запуск приложения с PostgreSQL.
 БД-зависимые автоконфигурации не отключаются ради фиктивного успешного запуска.
+
+Тестовый образ зафиксирован как `postgres:18.6`, без `latest`; PostgreSQL 18
+выбрана базовой major-версией для будущей поставки. Это поддерживаемая версия
+из [таблицы PostgreSQL](https://www.postgresql.org/support/versioning/).
+Конкретный production-образ фиксируется при реализации поставки в MS-13;
+тестовый образ должен сохранять совместимость с ним.
+
+Контейнер — бин `PostgresTestConfiguration`, параметры подключения передаются
+через `@ServiceConnection`. Время жизни управляется Spring Boot, как описано
+в [документации Testcontainers](https://docs.spring.io/spring-boot/reference/testing/testcontainers.html).
+SQL-тесты получают новый контекст и контейнер на каждый метод; reuse и внешние
+volumes не используются. Изоляция не зависит от rollback тестового метода.
 
 Spring Security и Spring Session JDBC остаются выбранными механизмами для
 MS-02; их интеграция, служебные миграции сессий и CSRF в MS-01-01 не реализуются.

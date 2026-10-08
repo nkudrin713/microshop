@@ -1,0 +1,23 @@
+/AGENTS.md
+
+# Build output and local caches
+/.gradle/
+/.kotlin/
+/build/
+/out/
+
+# IDE and operating system files
+/.idea/
+*.iml
+.DS_Store
+/docs/.obsidian/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+application-local.yml
+application-local.yaml
+application-local.properties
+*.pem
+*.key

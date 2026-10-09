@@ -44,15 +44,15 @@ class DatabaseMigrationTest {
 
         startApplication().use { context ->
             assertJpaConfiguration(context)
-            assertEquals("1", context.getBean(Flyway::class.java).info().current().version.version)
+            assertEquals("2", context.getBean(Flyway::class.java).info().current().version.version)
             assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM admin_user", Int::class.java))
             insertAdmin(jdbc, adminValues())
         }
 
         val dataBefore = jdbc.queryForList("SELECT * FROM admin_user")
         val historyBefore = jdbc.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank")
-        assertEquals(1, historyBefore.size)
-        assertEquals(true, historyBefore.single()["success"])
+        assertEquals(2, historyBefore.size)
+        assertTrue(historyBefore.all { it["success"] == true })
 
         startApplication().use { context ->
             assertJpaConfiguration(context)
@@ -106,14 +106,14 @@ class DatabaseMigrationTest {
         val causes = generateSequence<Throwable>(failure) { it.cause }.toList()
         assertTrue(causes.any { it is FlywayException })
         assertTrue(causes.any { it is SQLException && it.sqlState == "42703" })
-        assertTrue(causes.any { it.message?.contains("V2__invalid.sql") == true })
+        assertTrue(causes.any { it.message?.contains("V3__invalid.sql") == true })
 
         val jdbc = database()
         assertNull(jdbc.queryForObject("SELECT to_regclass('public.migration_failure_probe')", String::class.java))
-        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Int::class.java))
+        assertEquals(2, jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Int::class.java))
 
         startApplication().use { context ->
-            assertEquals("1", context.getBean(Flyway::class.java).info().current().version.version)
+            assertEquals("2", context.getBean(Flyway::class.java).info().current().version.version)
             assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM admin_user", Int::class.java))
         }
     }

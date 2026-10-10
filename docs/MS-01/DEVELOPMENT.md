@@ -183,6 +183,28 @@ Authorization, SQL, пароля и сообщения аннотации про
 контроллеры и DTO находятся в `src/test/` и не включаются в JAR. Ответы
 Spring Security 401/403 проверяются в MS-02.
 
+## Проверка healthcheck
+
+Узкая приемка MS-01-06:
+
+```sh
+./gradlew test --tests 'dev.nkudrin.microshop.BackendHealthTest' --tests 'dev.nkudrin.microshop.DatabaseMigrationTest'
+```
+
+`BackendHealthTest` запускает HTTP-сервер на случайном порту и отдельную
+PostgreSQL. Проверяются HTTP 200 / `UP` без владельца, скрытые детали и
+недоступность остальных endpoint Actuator. Для проверки HTTP 503 / `DOWN`
+тест запрещает новые подключения к своей БД и завершает существующие сеансы
+приложения; запрет снимается в `finally`. Таймауты пула сокращены только в
+тесте. `DatabaseMigrationTest` дополнительно проверяет, что после ошибки
+миграции HTTP-сервер не отвечает на `/actuator/health`.
+
+При локальном запуске healthcheck доступен на порту backend:
+
+```sh
+curl --fail --silent --show-error http://localhost:8080/actuator/health
+```
+
 ## Локальные файлы
 
 Результаты сборки, Gradle/Kotlin cache, IDE-файлы, `.env`, локальные

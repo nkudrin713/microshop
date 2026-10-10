@@ -184,3 +184,25 @@ FK автора запрещает удаление связанного `admin_
 Проверка снимков использует вход с контрольными паролем, token и secrets и
 проверяет сохраненный JSON. API просмотра журнала, создание владельца,
 торговые операции и `order_event` в MS-01-05 не реализуются.
+
+## Healthcheck backend
+
+В MS-01-06 используется штатный [Actuator health endpoint](https://docs.spring.io/spring-boot/reference/actuator/endpoints.html#actuator.endpoints.health).
+`management.endpoints.access.default=none` отключает остальные endpoint;
+для `health` разрешен доступ `read-only`. По HTTP публикуется только `health`,
+страница обнаружения `/actuator` отключена. `show-details=never` и
+`show-components=never` скрывают конфигурацию, компоненты и сведения об ошибках
+в публичном ответе, включая обращения к отдельным компонентам.
+Отдельные группы `liveness` и `readiness` отключены через `probes.enabled=false`;
+публичный контракт использует общий `/actuator/health` с проверкой БД.
+
+`management.health.db.enabled=true` включает проверку PostgreSQL штатным
+индикатором DataSource. После успешного запуска `/actuator/health` возвращает
+HTTP 200 и `{"status":"UP"}`. При недоступной БД ответ — HTTP 503 и
+`{"status":"DOWN"}`. Настройки стандартных индикаторов и таймаутов подключения
+остаются средствами Spring Boot; собственный health controller не требуется.
+
+Flyway и проверка JPA остаются обязательными при запуске. Ошибка миграции
+прерывает запуск и закрывает HTTP-сервер. Готовность не зависит от владельца,
+setup, публикации магазина или включения продаж. Проверки Caddy, витрины,
+installer и Docker healthcheck реализуются в MS-13 по [DELIVERY.md](../DELIVERY.md).

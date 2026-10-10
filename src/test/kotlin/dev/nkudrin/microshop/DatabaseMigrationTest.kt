@@ -1,7 +1,14 @@
 package dev.nkudrin.microshop
 
 import jakarta.persistence.EntityManagerFactory
+import java.io.IOException
+import java.net.ServerSocket
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.sql.SQLException
+import java.time.Duration
 import java.time.OffsetDateTime
 import java.util.UUID
 import javax.sql.DataSource
@@ -98,15 +105,27 @@ class DatabaseMigrationTest {
 
     @Test
     fun `invalid test migration aborts application startup and rolls back its changes`() {
+        val port = ServerSocket(0).use { it.localPort }
         val failure = assertFailsWith<Exception> {
             startApplication(
                 "--spring.flyway.locations=classpath:db/migration,classpath:db/invalid-migration",
+                port = port,
             ).close()
         }
         val causes = generateSequence<Throwable>(failure) { it.cause }.toList()
         assertTrue(causes.any { it is FlywayException })
         assertTrue(causes.any { it is SQLException && it.sqlState == "42703" })
         assertTrue(causes.any { it.message?.contains("V3__invalid.sql") == true })
+
+        HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build().use { client ->
+            assertFailsWith<IOException> {
+                client.send(
+                    HttpRequest.newBuilder(URI("http://127.0.0.1:$port/actuator/health"))
+                        .timeout(Duration.ofSeconds(2)).GET().build(),
+                    HttpResponse.BodyHandlers.discarding(),
+                )
+            }
+        }
 
         val jdbc = database()
         assertNull(jdbc.queryForObject("SELECT to_regclass('public.migration_failure_probe')", String::class.java))
@@ -118,13 +137,13 @@ class DatabaseMigrationTest {
         }
     }
 
-    private fun startApplication(vararg extraArguments: String): ConfigurableApplicationContext =
+    private fun startApplication(vararg extraArguments: String, port: Int = 0): ConfigurableApplicationContext =
         SpringApplicationBuilder(MicroshopApplication::class.java)
             .run(
                 "--spring.datasource.url=${postgres.jdbcUrl}",
                 "--spring.datasource.username=${postgres.username}",
                 "--spring.datasource.password=${postgres.password}",
-                "--server.port=0",
+                "--server.port=$port",
                 *extraArguments,
             )
 

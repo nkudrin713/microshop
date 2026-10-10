@@ -1,5 +1,8 @@
 package dev.nkudrin.microshop
 
+import dev.nkudrin.microshop.audit.AuditActorType
+import dev.nkudrin.microshop.audit.AuditSnapshot
+import dev.nkudrin.microshop.audit.AuditWriter
 import jakarta.persistence.EntityManagerFactory
 import java.io.IOException
 import java.net.ServerSocket
@@ -18,6 +21,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.FlywayException
+import org.hibernate.tool.schema.spi.SchemaManagementException
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.builder.SpringApplicationBuilder
@@ -32,6 +36,8 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.orm.jpa.support.OpenEntityManagerInViewFilter
 import org.springframework.orm.jpa.support.OpenEntityManagerInViewInterceptor
 import org.springframework.test.annotation.DirtiesContext
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionTemplate
 import org.testcontainers.postgresql.PostgreSQLContainer
 
 @SpringBootTest(
@@ -48,15 +54,28 @@ class DatabaseMigrationTest {
         val jdbc = database()
         assertNull(jdbc.queryForObject("SELECT to_regclass('public.admin_user')", String::class.java))
         assertNull(jdbc.queryForObject("SELECT to_regclass('public.flyway_schema_history')", String::class.java))
+        val admin = adminValues()
 
         startApplication().use { context ->
             assertJpaConfiguration(context)
             assertEquals("2", context.getBean(Flyway::class.java).info().current().version.version)
             assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM admin_user", Int::class.java))
-            insertAdmin(jdbc, adminValues())
+            insertAdmin(jdbc, admin)
+            TransactionTemplate(context.getBean(PlatformTransactionManager::class.java)).executeWithoutResult {
+                context.getBean(AuditWriter::class.java).record(
+                    actorType = AuditActorType.ADMIN,
+                    actorAdminId = admin[0] as UUID,
+                    action = "TEST_CREATE",
+                    entityType = "admin_user",
+                    entityId = admin[0].toString(),
+                    after = AuditSnapshot.select(mapOf("display_name" to admin[3]), "display_name"),
+                )
+            }
         }
 
         val dataBefore = jdbc.queryForList("SELECT * FROM admin_user")
+        val auditBefore = jdbc.queryForList("SELECT * FROM audit_log")
+        assertEquals(1, auditBefore.size)
         val historyBefore = jdbc.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank")
         assertEquals(2, historyBefore.size)
         assertTrue(historyBefore.all { it["success"] == true })
@@ -64,6 +83,7 @@ class DatabaseMigrationTest {
         startApplication().use { context ->
             assertJpaConfiguration(context)
             assertEquals(dataBefore, jdbc.queryForList("SELECT * FROM admin_user"))
+            assertEquals(auditBefore, jdbc.queryForList("SELECT * FROM audit_log"))
             assertEquals(historyBefore, jdbc.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank"))
         }
     }
@@ -117,15 +137,7 @@ class DatabaseMigrationTest {
         assertTrue(causes.any { it is SQLException && it.sqlState == "42703" })
         assertTrue(causes.any { it.message?.contains("V3__invalid.sql") == true })
 
-        HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build().use { client ->
-            assertFailsWith<IOException> {
-                client.send(
-                    HttpRequest.newBuilder(URI("http://127.0.0.1:$port/actuator/health"))
-                        .timeout(Duration.ofSeconds(2)).GET().build(),
-                    HttpResponse.BodyHandlers.discarding(),
-                )
-            }
-        }
+        assertHealthUnavailable(port)
 
         val jdbc = database()
         assertNull(jdbc.queryForObject("SELECT to_regclass('public.migration_failure_probe')", String::class.java))
@@ -134,6 +146,41 @@ class DatabaseMigrationTest {
         startApplication().use { context ->
             assertEquals("2", context.getBean(Flyway::class.java).info().current().version.version)
             assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM admin_user", Int::class.java))
+        }
+    }
+
+    @Test
+    fun `incompatible audit schema aborts startup without repairing schema or migration history`() {
+        startApplication().close()
+        val jdbc = database()
+        jdbc.execute("ALTER TABLE audit_log ALTER COLUMN created_at TYPE text USING created_at::text")
+        val schemaQuery = "SELECT column_name, data_type, is_nullable FROM information_schema.columns " +
+            "WHERE table_schema = 'public' AND table_name = 'audit_log' ORDER BY ordinal_position"
+        val schemaBefore = jdbc.queryForList(schemaQuery)
+        val historyBefore = jdbc.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank")
+        assertEquals("text", schemaBefore.single { it["column_name"] == "created_at" }["data_type"])
+        val port = ServerSocket(0).use { it.localPort }
+
+        val failure = assertFailsWith<Exception> { startApplication(port = port).close() }
+        val causes = generateSequence<Throwable>(failure) { it.cause }.toList()
+        assertTrue(causes.any {
+            it is SchemaManagementException &&
+                it.message.orEmpty().contains("audit_log") && it.message.orEmpty().contains("created_at")
+        })
+        assertEquals(schemaBefore, jdbc.queryForList(schemaQuery))
+        assertEquals(historyBefore, jdbc.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank"))
+        assertHealthUnavailable(port)
+    }
+
+    private fun assertHealthUnavailable(port: Int) {
+        HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build().use { client ->
+            assertFailsWith<IOException> {
+                client.send(
+                    HttpRequest.newBuilder(URI("http://127.0.0.1:$port/actuator/health"))
+                        .timeout(Duration.ofSeconds(2)).GET().build(),
+                    HttpResponse.BodyHandlers.discarding(),
+                )
+            }
         }
     }
 

@@ -13,6 +13,8 @@ enum class ApiError(val status: HttpStatus, val detail: String) {
     SETUP_ALREADY_INITIALIZED(HttpStatus.CONFLICT, "The installation is already initialized."),
     CSRF_TOKEN_INVALID(HttpStatus.FORBIDDEN, "The CSRF token is missing or invalid."),
     AUTHENTICATION_REQUIRED(HttpStatus.UNAUTHORIZED, "Authentication is required."),
+    INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "Invalid login or password."),
+    LOGIN_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "Too many failed login attempts. Try again later."),
     ACCESS_DENIED(HttpStatus.FORBIDDEN, "Access is denied."),
     HTTPS_REQUIRED(HttpStatus.BAD_REQUEST, "HTTPS is required."),
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "The HTTP method is not supported for this resource."),

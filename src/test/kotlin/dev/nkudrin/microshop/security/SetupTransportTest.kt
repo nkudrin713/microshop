@@ -3,6 +3,8 @@ package dev.nkudrin.microshop.security
 import dev.nkudrin.microshop.PostgresTestConfiguration
 import dev.nkudrin.microshop.TestInstallationSecrets
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalServerPort
@@ -25,6 +27,72 @@ class SetupTransportTest {
     @LocalServerPort private var port: Int = 0
 
     @Autowired private lateinit var json: JsonMapper
+
+    @ParameterizedTest
+    @CsvSource(
+        "GET,/api/setup/status",
+        "POST,/api/setup/owner",
+        "GET,/api/csrf",
+        "POST,/api/admin/auth/login",
+        "GET,/api/admin/auth/me",
+        "POST,/api/admin/auth/logout",
+        "POST,/api/admin/auth/logout-all",
+        "PUT,/api/admin/settings",
+    )
+    fun `production denies HTTP before CSRF credentials or session creation`(method: String, path: String) {
+        HttpClient.newHttpClient().use { client ->
+            val request =
+                HttpRequest.newBuilder(URI("http://127.0.0.1:$port$path"))
+                    .header("Accept", "text/html")
+                    .header("Content-Type", "application/json")
+                    .header("Forwarded", "proto=https;for=203.0.113.17")
+                    .method(method, HttpRequest.BodyPublishers.ofString("{"))
+                    .build()
+            val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+            assertEquals(400, response.statusCode())
+            assertTrue(response.headers().firstValue("content-type").orElseThrow().startsWith("application/problem+json"))
+            val problem = json.readTree(response.body())
+            assertEquals("HTTPS_REQUIRED", problem["code"].stringValue())
+            assertEquals("HTTPS is required.", problem["detail"].stringValue())
+            assertEquals(path, problem["instance"].stringValue())
+            assertTrue(response.headers().firstValue("set-cookie").isEmpty)
+            assertTrue(response.headers().firstValue("location").isEmpty)
+        }
+    }
+
+    @Test
+    fun `login limiter uses client IP supplied by the explicitly trusted Tomcat proxy`() {
+        HttpClient.newHttpClient().use { client ->
+            fun request(path: String, ip: String) = HttpRequest.newBuilder(URI("http://127.0.0.1:$port$path"))
+                .header("X-Forwarded-Proto", "https")
+                .header("X-Forwarded-For", ip)
+
+            fun send(request: HttpRequest.Builder) = client.send(request.build(), HttpResponse.BodyHandlers.ofString())
+            val csrf = send(request("/api/csrf", "203.0.113.17").GET())
+            assertEquals(200, csrf.statusCode())
+            val cookie = csrf.headers().firstValue("set-cookie").orElseThrow().substringBefore(';')
+            val token = json.readTree(csrf.body())["token"].stringValue()
+            val credentials = """{"login":"unknown","password":"wrong-password-123456789"}"""
+
+            fun login(ip: String) = send(
+                request("/api/admin/auth/login", ip)
+                    .header("Cookie", cookie)
+                    .header("X-CSRF-TOKEN", token)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(credentials)),
+            )
+            repeat(10) {
+                val response = login("203.0.113.17")
+                assertEquals(401, response.statusCode())
+                assertEquals("INVALID_CREDENTIALS", json.readTree(response.body())["code"].stringValue())
+            }
+            val blocked = login("203.0.113.17")
+            assertEquals(429, blocked.statusCode())
+            assertEquals("LOGIN_RATE_LIMITED", json.readTree(blocked.body())["code"].stringValue())
+            assertTrue(blocked.headers().firstValue("retry-after").orElseThrow().toLong() in 1..900)
+            assertEquals(401, login("203.0.113.18").statusCode())
+        }
+    }
 
     @Test
     fun `native Tomcat trusts explicit proxy and setup uses Secure cookie and masked CSRF`() {

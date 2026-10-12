@@ -33,8 +33,11 @@ class ApiExceptionHandler : ResponseEntityExceptionHandler() {
     private val log = LoggerFactory.getLogger(ApiExceptionHandler::class.java)
 
     @ExceptionHandler(ApiException::class)
-    fun handleApiException(ex: ApiException, request: WebRequest): ResponseEntity<Any> =
-        response(ex.error, ex.error.status, HttpHeaders.EMPTY, request)
+    fun handleApiException(ex: ApiException, request: WebRequest): ResponseEntity<Any> {
+        val headers = HttpHeaders()
+        ex.retryAfterSeconds?.let { headers.set(HttpHeaders.RETRY_AFTER, it.toString()) }
+        return response(ex.error, ex.error.status, headers, request)
+    }
 
     @ExceptionHandler(Exception::class)
     fun handleUnexpectedException(ex: Exception, request: WebRequest): ResponseEntity<Any> {

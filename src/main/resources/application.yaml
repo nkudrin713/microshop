@@ -12,6 +12,9 @@ spring:
   sql:
     init:
       mode: never
+  session:
+    jdbc:
+      initialize-schema: never
 
 microshop:
   app-secret: ${APP_SECRET:}

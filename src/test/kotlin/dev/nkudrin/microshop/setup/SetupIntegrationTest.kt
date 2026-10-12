@@ -2,6 +2,7 @@ package dev.nkudrin.microshop.setup
 
 import dev.nkudrin.microshop.PostgresTestConfiguration
 import dev.nkudrin.microshop.TestInstallationSecrets
+import jakarta.servlet.http.Cookie
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -16,7 +17,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.jdbc.core.JdbcTemplate
-import org.springframework.mock.web.MockHttpSession
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
@@ -109,7 +109,13 @@ class SetupIntegrationTest {
         assertEquals("owner01", snapshot["login"].stringValue())
         assertEquals("Владелец", snapshot["displayName"].stringValue())
         assertTrue(snapshot["enabled"].asBoolean())
-        assertNull((result.request.getSession(false) as? MockHttpSession)?.getAttribute("SPRING_SECURITY_CONTEXT"))
+        assertEquals(
+            0,
+            jdbc.queryForObject(
+                "SELECT count(*) FROM spring_session_attributes WHERE attribute_name = 'SPRING_SECURITY_CONTEXT'",
+                Int::class.java,
+            ),
+        )
         mvc
             .perform(get("/api/admin/settings"))
             .andExpect(status().isUnauthorized)
@@ -169,12 +175,12 @@ class SetupIntegrationTest {
 
     @Test
     fun `malformed or missing JSON does not initialize installation`() {
-        val (session, token) = csrf()
+        val (cookie, token) = csrf()
         listOf("", "{", "{}", """{"setupToken":null,"login":"owner","password":"123456789012345","displayName":"Owner"}""").forEach {
             mvc
                 .perform(
                     post("/api/setup/owner")
-                        .session(session)
+                        .cookie(cookie)
                         .header("X-CSRF-TOKEN", token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(it),
@@ -186,14 +192,14 @@ class SetupIntegrationTest {
 
     @Test
     fun `CSRF is checked before credentials and denies every mutation`() {
-        val (session, _) = csrf()
+        val (cookie, _) = csrf()
         listOf("/api/setup/owner", "/api/admin/settings", "/api/admin/auth/login").forEach { path ->
             mvc
-                .perform(post(path).session(session).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .perform(post(path).cookie(cookie).contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isForbidden)
                 .andExpect(jsonPath("$.code").value("CSRF_TOKEN_INVALID"))
             mvc
-                .perform(post(path).session(session).header("X-CSRF-TOKEN", "invalid"))
+                .perform(post(path).cookie(cookie).header("X-CSRF-TOKEN", "invalid"))
                 .andExpect(status().isForbidden)
                 .andExpect(jsonPath("$.code").value("CSRF_TOKEN_INVALID"))
         }
@@ -206,13 +212,13 @@ class SetupIntegrationTest {
         val start = CountDownLatch(1)
         Executors.newFixedThreadPool(2).use { executor ->
             val futures =
-                callers.map { (session, token) ->
+                callers.map { (cookie, token) ->
                     executor.submit<Int> {
                         check(start.await(5, TimeUnit.SECONDS))
                         mvc
                             .perform(
                                 post("/api/setup/owner")
-                                    .session(session)
+                                    .cookie(cookie)
                                     .header("X-CSRF-TOKEN", token)
                                     .contentType(MediaType.APPLICATION_JSON)
                                     .content(body()),
@@ -254,12 +260,12 @@ class SetupIntegrationTest {
         }
     }
 
-    private fun csrf(): Pair<MockHttpSession, String> {
+    private fun csrf(): Pair<Cookie, String> {
         val result = mvc.perform(get("/api/csrf")).andExpect(status().isOk).andReturn()
         assertEquals("no-store", result.response.getHeader("Cache-Control"))
         val payload = json.readTree(result.response.contentAsString)
         assertEquals("X-CSRF-TOKEN", payload["headerName"].stringValue())
-        return result.request.getSession(false) as MockHttpSession to payload["token"].stringValue()
+        return checkNotNull(result.response.getCookie("MICROSHOP_SESSION")) to payload["token"].stringValue()
     }
 
     private fun create(
@@ -267,10 +273,10 @@ class SetupIntegrationTest {
         login: String = "  OWNER01  ",
         password: String = "123456789012345",
         name: String = "  Владелец  ",
-    ) = csrf().let { (session, csrf) ->
+    ) = csrf().let { (cookie, csrf) ->
         mvc.perform(
             post("/api/setup/owner")
-                .session(session)
+                .cookie(cookie)
                 .header("X-CSRF-TOKEN", csrf)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body(token, login, password, name)),

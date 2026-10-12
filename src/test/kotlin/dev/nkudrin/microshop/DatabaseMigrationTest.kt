@@ -64,7 +64,7 @@ class DatabaseMigrationTest {
         startApplication().use { context ->
             assertJpaConfiguration(context)
             assertEquals(
-                "3",
+                "4",
                 context
                     .getBean(Flyway::class.java)
                     .info()
@@ -89,7 +89,7 @@ class DatabaseMigrationTest {
         val auditBefore = jdbc.queryForList("SELECT * FROM audit_log")
         assertEquals(1, auditBefore.size)
         val historyBefore = jdbc.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank")
-        assertEquals(3, historyBefore.size)
+        assertEquals(4, historyBefore.size)
         assertTrue(historyBefore.all { it["success"] == true })
 
         startApplication().use { context ->

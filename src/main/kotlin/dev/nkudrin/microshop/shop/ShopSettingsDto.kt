@@ -52,7 +52,13 @@ data class ShopSettingsDto(
     }
 }
 
-data class ShopContactsDto(val phone: String?, @field:Email val email: String?, val telegram: String?, val otherContact: String?)
+data class ShopContactsDto(
+    val phone: String?,
+    @field:Email
+    val email: String?,
+    val telegram: String?,
+    val otherContact: String?,
+)
 
 private fun JsonNode.requireFields(vararg fields: String) {
     require(isObject && propertyNames().toSet() == fields.toSet()) { "Expected all declared fields and no unknown fields." }

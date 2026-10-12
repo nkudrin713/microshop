@@ -26,9 +26,11 @@ import kotlin.test.assertTrue
 @AutoConfigureMockMvc(addFilters = false)
 @Import(ShopSettingsDtoTest.TestController::class, ShopSettingsValidator::class, ApiExceptionHandler::class)
 class ShopSettingsDtoTest {
-    @Autowired private lateinit var mvc: MockMvc
+    @Autowired
+    private lateinit var mvc: MockMvc
 
-    @Autowired private lateinit var json: JsonMapper
+    @Autowired
+    private lateinit var json: JsonMapper
 
     @Test
     fun `normalization preserves line breaks and response exposes only editable settings and version`() {

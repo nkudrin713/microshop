@@ -24,9 +24,11 @@ import kotlin.test.assertTrue
 )
 @Import(PostgresTestConfiguration::class)
 class SetupTransportTest {
-    @LocalServerPort private var port: Int = 0
+    @LocalServerPort
+    private var port: Int = 0
 
-    @Autowired private lateinit var json: JsonMapper
+    @Autowired
+    private lateinit var json: JsonMapper
 
     @ParameterizedTest
     @CsvSource(

@@ -195,9 +195,13 @@ class ApiExceptionHandlerTest {
     }
 
     data class Input(
-        @field:NotBlank @field:Size(max = 4) val name: String,
-        @field:Min(1) val quantity: Int,
-        @field:NotBlank(message = "MESSAGE_SECRET") val password: String,
+        @field:NotBlank
+        @field:Size(max = 4)
+        val name: String,
+        @field:Min(1)
+        val quantity: Int,
+        @field:NotBlank(message = "MESSAGE_SECRET")
+        val password: String,
     )
 
     companion object {

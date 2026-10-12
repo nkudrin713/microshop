@@ -37,7 +37,8 @@ import kotlin.test.assertTrue
 @SpringBootTest(classes = [InstallationStartupTest.ContainerHost::class], webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class InstallationStartupTest {
-    @Autowired private lateinit var postgres: PostgreSQLContainer
+    @Autowired
+    private lateinit var postgres: PostgreSQLContainer
 
     @Test
     fun `restart preserves uninitialized token and initialized owner and key hash`() {

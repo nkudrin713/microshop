@@ -40,15 +40,20 @@ import kotlin.test.assertTrue
 @Import(PostgresTestConfiguration::class)
 @ExtendWith(OutputCaptureExtension::class)
 class ShopSettingsIntegrationTest {
-    @Autowired private lateinit var jdbc: JdbcTemplate
+    @Autowired
+    private lateinit var jdbc: JdbcTemplate
 
-    @Autowired private lateinit var installation: InstallationService
+    @Autowired
+    private lateinit var installation: InstallationService
 
-    @Autowired private lateinit var setup: SetupService
+    @Autowired
+    private lateinit var setup: SetupService
 
-    @Autowired private lateinit var json: JsonMapper
+    @Autowired
+    private lateinit var json: JsonMapper
 
-    @LocalServerPort private var port: Int = 0
+    @LocalServerPort
+    private var port: Int = 0
 
     private val browsers = mutableListOf<Browser>()
     private lateinit var owner: Browser

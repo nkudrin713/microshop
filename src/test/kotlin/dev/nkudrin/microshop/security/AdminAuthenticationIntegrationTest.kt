@@ -42,19 +42,26 @@ import kotlin.test.assertTrue
 @ActiveProfiles("dev")
 @Import(PostgresTestConfiguration::class)
 class AdminAuthenticationIntegrationTest {
-    @Autowired private lateinit var jdbc: JdbcTemplate
+    @Autowired
+    private lateinit var jdbc: JdbcTemplate
 
-    @Autowired private lateinit var installation: InstallationService
+    @Autowired
+    private lateinit var installation: InstallationService
 
-    @Autowired private lateinit var setup: SetupService
+    @Autowired
+    private lateinit var setup: SetupService
 
-    @Autowired private lateinit var sessions: FindByIndexNameSessionRepository<out Session>
+    @Autowired
+    private lateinit var sessions: FindByIndexNameSessionRepository<out Session>
 
-    @Autowired private lateinit var json: JsonMapper
+    @Autowired
+    private lateinit var json: JsonMapper
 
-    @MockitoBean private lateinit var clock: Clock
+    @MockitoBean
+    private lateinit var clock: Clock
 
-    @LocalServerPort private var port: Int = 0
+    @LocalServerPort
+    private var port: Int = 0
 
     private lateinit var client: HttpClient
     private lateinit var ownerId: UUID

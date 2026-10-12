@@ -9,3 +9,5 @@ insert_final_newline = true
 ktlint_code_style = intellij_idea
 max_line_length = 140
 ktlint_chain_method_rule_force_multiline_when_chain_operator_count_greater_or_equal_than = unset
+ktlint_microshop_property-annotation = enabled
+ij_kotlin_field_annotation_wrap = 2

@@ -5,6 +5,7 @@
 /.gradle/
 /.kotlin/
 /build/
+/ktlint-rules/build/
 /out/
 
 # IDE and operating system files

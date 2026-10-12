@@ -43,17 +43,23 @@ import kotlin.test.assertTrue
 @Import(PostgresTestConfiguration::class)
 @ExtendWith(OutputCaptureExtension::class)
 class SetupIntegrationTest {
-    @Autowired private lateinit var mvc: MockMvc
+    @Autowired
+    private lateinit var mvc: MockMvc
 
-    @Autowired private lateinit var jdbc: JdbcTemplate
+    @Autowired
+    private lateinit var jdbc: JdbcTemplate
 
-    @Autowired private lateinit var initializer: InstallationService
+    @Autowired
+    private lateinit var initializer: InstallationService
 
-    @Autowired private lateinit var passwords: PasswordEncoder
+    @Autowired
+    private lateinit var passwords: PasswordEncoder
 
-    @Autowired private lateinit var json: JsonMapper
+    @Autowired
+    private lateinit var json: JsonMapper
 
-    @LocalServerPort private var port: Int = 0
+    @LocalServerPort
+    private var port: Int = 0
 
     @BeforeEach
     fun resetInstallation() {

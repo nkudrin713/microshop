@@ -43,6 +43,7 @@ dependencies {
 
     // ktlint 1.8.0 requires this compiler API; keep the application compiler separate.
     add("ktlint", "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.2.21")
+    add("ktlint", project(":ktlint-rules")) { isTransitive = false }
 }
 
 kotlin {
@@ -63,4 +64,8 @@ allOpen {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+tasks.named("check") {
+    dependsOn(":ktlint-rules:check")
 }

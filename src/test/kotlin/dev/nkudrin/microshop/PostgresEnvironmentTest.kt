@@ -1,9 +1,5 @@
 package dev.nkudrin.microshop
 
-import javax.sql.DataSource
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration
@@ -14,6 +10,10 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Import
 import org.springframework.test.annotation.DirtiesContext
 import org.testcontainers.postgresql.PostgreSQLContainer
+import javax.sql.DataSource
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
 
 @SpringBootTest(
     classes = [PostgresEnvironmentTest.JdbcConfiguration::class],
@@ -83,14 +83,15 @@ class PostgresEnvironmentTest {
         }
     }
 
-    private fun probeRowCount(): Int = dataSource.connection.use { connection ->
-        connection.createStatement().use { statement ->
-            statement.executeQuery("SELECT count(*) FROM environment_probe").use {
-                it.next()
-                it.getInt(1)
+    private fun probeRowCount(): Int =
+        dataSource.connection.use { connection ->
+            connection.createStatement().use { statement ->
+                statement.executeQuery("SELECT count(*) FROM environment_probe").use {
+                    it.next()
+                    it.getInt(1)
+                }
             }
         }
-    }
 
     @Configuration(proxyBeanMethods = false)
     @ImportAutoConfiguration(DataSourceAutoConfiguration::class, ServiceConnectionAutoConfiguration::class)

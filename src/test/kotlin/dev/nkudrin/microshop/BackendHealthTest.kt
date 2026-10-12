@@ -2,14 +2,6 @@ package dev.nkudrin.microshop
 
 import com.zaxxer.hikari.HikariDataSource
 import jakarta.persistence.EntityManagerFactory
-import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
-import java.sql.DriverManager
-import java.time.Duration
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -22,6 +14,14 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.annotation.DirtiesContext
 import org.testcontainers.postgresql.PostgreSQLContainer
 import tools.jackson.databind.json.JsonMapper
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.sql.DriverManager
+import java.time.Duration
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -57,19 +57,62 @@ class BackendHealthTest {
 
     @Test
     fun `health is up after migrations and JPA validation without owner and hides infrastructure endpoints`() {
-        assertTrue(context.getBean(Flyway::class.java).info().applied().isNotEmpty())
-        assertTrue(context.getBean(Flyway::class.java).info().pending().isEmpty())
+        assertTrue(
+            context
+                .getBean(Flyway::class.java)
+                .info()
+                .applied()
+                .isNotEmpty(),
+        )
+        assertTrue(
+            context
+                .getBean(Flyway::class.java)
+                .info()
+                .pending()
+                .isEmpty(),
+        )
         assertEquals("validate", context.getBean(EntityManagerFactory::class.java).properties["hibernate.hbm2ddl.auto"])
         assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM admin_user", Int::class.java))
         assertHealth(200, "UP")
 
         listOf(
-            "/actuator", "/actuator/env", "/actuator/configprops", "/actuator/beans", "/actuator/mappings",
-            "/actuator/metrics", "/actuator/info", "/actuator/loggers", "/actuator/heapdump", "/actuator/threaddump",
-            "/actuator/health/db", "/actuator/health/diskSpace",
-            "/actuator/health/liveness", "/actuator/health/readiness",
+            "/actuator",
+            "/actuator/env",
+            "/actuator/configprops",
+            "/actuator/beans",
+            "/actuator/mappings",
+            "/actuator/metrics",
+            "/actuator/info",
+            "/actuator/loggers",
+            "/actuator/heapdump",
+            "/actuator/threaddump",
+            "/actuator/health/db",
+            "/actuator/health/diskSpace",
+            "/actuator/health/liveness",
+            "/actuator/health/readiness",
         ).forEach { path ->
-            assertEquals(404, request(path).statusCode(), path)
+            assertEquals(401, request(path).statusCode(), path)
+        }
+    }
+
+    @Test
+    fun `production rejects HTTP and spoofed proxy headers before creating a session`() {
+        val port = checkNotNull((context as WebServerApplicationContext).webServer).port
+        listOf("/api/setup/status", "/api/setup/owner", "/api/csrf", "/api/admin/settings", "/%61pi/csrf").forEach { path ->
+            val response =
+                client.send(
+                    HttpRequest
+                        .newBuilder(URI("http://127.0.0.1:$port$path"))
+                        .header("X-Forwarded-Proto", "https")
+                        .header("X-Forwarded-For", "127.0.0.1")
+                        .header("Forwarded", "proto=https;for=127.0.0.1")
+                        .GET()
+                        .build(),
+                    HttpResponse.BodyHandlers.ofString(),
+                )
+            assertEquals(400, response.statusCode(), path)
+            assertEquals("HTTPS_REQUIRED", json.readTree(response.body())["code"].stringValue())
+            assertTrue(response.headers().firstValue("set-cookie").isEmpty)
         }
     }
 
@@ -81,12 +124,13 @@ class BackendHealthTest {
             admin.createStatement().use { statement ->
                 statement.execute("ALTER DATABASE microshop_test ALLOW_CONNECTIONS false")
                 try {
-                    statement.executeQuery(
-                        "SELECT pg_terminate_backend(pid, 2000) FROM pg_stat_activity " +
-                            "WHERE datname = 'microshop_test' AND pid <> pg_backend_pid()",
-                    ).use { result ->
-                        while (result.next()) assertTrue(result.getBoolean(1))
-                    }
+                    statement
+                        .executeQuery(
+                            "SELECT pg_terminate_backend(pid, 2000) FROM pg_stat_activity " +
+                                "WHERE datname = 'microshop_test' AND pid <> pg_backend_pid()",
+                        ).use { result ->
+                            while (result.next()) assertTrue(result.getBoolean(1))
+                        }
                     dataSource.hikariPoolMXBean.softEvictConnections()
                     assertHealth(503, "DOWN")
                 } finally {
@@ -96,7 +140,10 @@ class BackendHealthTest {
         }
     }
 
-    private fun assertHealth(status: Int, health: String) {
+    private fun assertHealth(
+        status: Int,
+        health: String,
+    ) {
         val response = request("/actuator/health")
         assertEquals(status, response.statusCode())
         assertEquals(json.readTree("{\"status\":\"$health\"}"), json.readTree(response.body()))
@@ -105,7 +152,8 @@ class BackendHealthTest {
     private fun request(path: String): HttpResponse<String> {
         val port = checkNotNull((context as WebServerApplicationContext).webServer).port
         return client.send(
-            HttpRequest.newBuilder(URI("http://127.0.0.1:$port$path"))
+            HttpRequest
+                .newBuilder(URI("http://127.0.0.1:$port$path"))
                 .timeout(Duration.ofSeconds(5))
                 .GET()
                 .build(),

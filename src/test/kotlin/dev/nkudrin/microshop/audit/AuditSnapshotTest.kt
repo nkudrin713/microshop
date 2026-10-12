@@ -1,15 +1,19 @@
 package dev.nkudrin.microshop.audit
 
+import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import org.junit.jupiter.api.Test
 
 class AuditSnapshotTest {
     @Test
     fun `snapshot copies only explicitly allowed fields from input containing secrets`() {
-        val source = mutableMapOf<String, Any?>(
-            "status" to "ACTIVE", "password" to "control-password", "token" to "control-token", "secret" to "control-secret",
-        )
+        val source =
+            mutableMapOf<String, Any?>(
+                "status" to "ACTIVE",
+                "password" to "control-password",
+                "token" to "control-token",
+                "secret" to "control-secret",
+            )
         val snapshot = AuditSnapshot.select(source, "status")
         source["status"] = "CHANGED"
         assertEquals(mapOf("status" to "ACTIVE"), snapshot.data)
@@ -35,5 +39,9 @@ class AuditSnapshotTest {
         }
     }
 
-    private data class TestCredentials(val password: String, val token: String, val secret: String)
+    private data class TestCredentials(
+        val password: String,
+        val token: String,
+        val secret: String,
+    )
 }

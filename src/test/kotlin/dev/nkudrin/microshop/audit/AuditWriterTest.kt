@@ -1,14 +1,6 @@
 package dev.nkudrin.microshop.audit
 
 import dev.nkudrin.microshop.PostgresTestConfiguration
-import java.sql.SQLException
-import java.time.Instant
-import java.time.OffsetDateTime
-import java.util.UUID
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -20,6 +12,14 @@ import org.springframework.transaction.IllegalTransactionStateException
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.UnexpectedRollbackException
 import org.springframework.transaction.support.TransactionTemplate
+import java.sql.SQLException
+import java.time.Instant
+import java.time.OffsetDateTime
+import java.util.UUID
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Import(PostgresTestConfiguration::class)
@@ -43,18 +43,19 @@ class AuditWriterTest {
         val startedAt = Instant.now()
         val before = snapshotSource("Original")
         val after = snapshotSource("Updated")
-        val auditId = TransactionTemplate(transactionManager).execute {
-            changeAdmin(adminId)
-            writer.record(
-                actorType = AuditActorType.ADMIN,
-                actorAdminId = adminId,
-                action = "TEST_UPDATE",
-                entityType = "admin_user",
-                entityId = adminId.toString(),
-                before = AuditSnapshot.select(before, "display_name", "enabled", "count", "note"),
-                after = AuditSnapshot.select(after, "display_name", "enabled", "count", "note"),
-            )
-        }
+        val auditId =
+            TransactionTemplate(transactionManager).execute {
+                changeAdmin(adminId)
+                writer.record(
+                    actorType = AuditActorType.ADMIN,
+                    actorAdminId = adminId,
+                    action = "TEST_UPDATE",
+                    entityType = "admin_user",
+                    entityId = adminId.toString(),
+                    before = AuditSnapshot.select(before, "display_name", "enabled", "count", "note"),
+                    after = AuditSnapshot.select(after, "display_name", "enabled", "count", "note"),
+                )
+            }
         val finishedAt = Instant.now()
 
         assertEquals("Updated", adminName(adminId))
@@ -71,10 +72,11 @@ class AuditWriterTest {
             entry.createdAt,
             jdbc.queryForObject("SELECT created_at FROM audit_log WHERE id = ?", OffsetDateTime::class.java, auditId)!!.toInstant(),
         )
-        val json = jdbc.queryForMap(
-            "SELECT before_data::text, after_data::text, jsonb_typeof(before_data) AS json_type FROM audit_log WHERE id = ?",
-            auditId,
-        )
+        val json =
+            jdbc.queryForMap(
+                "SELECT before_data::text, after_data::text, jsonb_typeof(before_data) AS json_type FROM audit_log WHERE id = ?",
+                auditId,
+            )
         assertEquals("object", json["json_type"])
         listOf("password_hash", "token", "secrets", "control-password", "control-token", "control-secret").forEach {
             assertTrue(json.values.none { value -> value.toString().contains(it) })
@@ -119,9 +121,10 @@ class AuditWriterTest {
 
     @Test
     fun `system audit allows absent admin and nullable snapshots`() {
-        val auditId = TransactionTemplate(transactionManager).execute {
-            writer.record(AuditActorType.SYSTEM, null, "TEST_UPDATE", "test_object", "42")
-        }
+        val auditId =
+            TransactionTemplate(transactionManager).execute {
+                writer.record(AuditActorType.SYSTEM, null, "TEST_UPDATE", "test_object", "42")
+            }
         val entry = repository.findById(auditId).orElseThrow()
         assertEquals(AuditActorType.SYSTEM, entry.actorType)
         assertNull(entry.actorAdminId)
@@ -148,22 +151,30 @@ class AuditWriterTest {
         insertAudit(auditValues(null).also { it[1] = "SYSTEM" })
         insertAudit(auditValues(adminId).also { it[1] = "SYSTEM" })
         assertEquals(3, auditCount())
-        val indexes = jdbc.queryForList(
-            "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'audit_log'",
-            String::class.java,
-        )
+        val indexes =
+            jdbc.queryForList(
+                "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'audit_log'",
+                String::class.java,
+            )
         listOf("(entity_type, entity_id, created_at, id)", "(created_at, id)", "(actor_admin_id)").forEach { columns ->
             assertTrue(indexes.any { it?.endsWith(columns) == true })
         }
     }
 
-    private fun prepareAdmin(): UUID = UUID.randomUUID().also { id ->
-        jdbc.update(
-            "INSERT INTO admin_user (id, login, password_hash, display_name, enabled, created_at, updated_at) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            id, "test-owner", "test-only-hash", "Original", true, OffsetDateTime.now(), OffsetDateTime.now(),
-        )
-    }
+    private fun prepareAdmin(): UUID =
+        UUID.randomUUID().also { id ->
+            jdbc.update(
+                "INSERT INTO admin_user (id, login, password_hash, display_name, enabled, created_at, updated_at) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                id,
+                "test-owner",
+                "test-only-hash",
+                "Original",
+                true,
+                OffsetDateTime.now(),
+                OffsetDateTime.now(),
+            )
+        }
 
     private fun changeAdmin(adminId: UUID) {
         assertEquals(1, jdbc.update("UPDATE admin_user SET display_name = 'Updated' WHERE id = ?", adminId))
@@ -172,24 +183,33 @@ class AuditWriterTest {
     private fun adminName(adminId: UUID): String? =
         jdbc.queryForObject("SELECT display_name FROM admin_user WHERE id = ?", String::class.java, adminId)
 
-    private fun recordAdmin(adminId: UUID) =
-        writer.record(AuditActorType.ADMIN, adminId, "TEST_UPDATE", "admin_user", adminId.toString())
+    private fun recordAdmin(adminId: UUID) = writer.record(AuditActorType.ADMIN, adminId, "TEST_UPDATE", "admin_user", adminId.toString())
 
     private fun auditCount(): Int? = jdbc.queryForObject("SELECT count(*) FROM audit_log", Int::class.java)
 
-    private fun snapshotSource(name: String): Map<String, Any?> = mapOf(
-        "display_name" to name,
-        "enabled" to true,
-        "count" to 3,
-        "note" to null,
-        "password_hash" to "control-password",
-        "token" to "control-token",
-        "secrets" to mapOf("nested" to "control-secret"),
-    )
+    private fun snapshotSource(name: String): Map<String, Any?> =
+        mapOf(
+            "display_name" to name,
+            "enabled" to true,
+            "count" to 3,
+            "note" to null,
+            "password_hash" to "control-password",
+            "token" to "control-token",
+            "secrets" to mapOf("nested" to "control-secret"),
+        )
 
-    private fun auditValues(adminId: UUID?): MutableList<Any?> = mutableListOf(
-        UUID.randomUUID(), "ADMIN", adminId, "TEST_UPDATE", "test_object", "42", null, null, OffsetDateTime.now(),
-    )
+    private fun auditValues(adminId: UUID?): MutableList<Any?> =
+        mutableListOf(
+            UUID.randomUUID(),
+            "ADMIN",
+            adminId,
+            "TEST_UPDATE",
+            "test_object",
+            "42",
+            null,
+            null,
+            OffsetDateTime.now(),
+        )
 
     private fun insertAudit(values: List<Any?>) {
         jdbc.update(
@@ -199,7 +219,10 @@ class AuditWriterTest {
         )
     }
 
-    private fun assertSqlState(expected: String, operation: () -> Unit) {
+    private fun assertSqlState(
+        expected: String,
+        operation: () -> Unit,
+    ) {
         val failure = assertFailsWith<DataAccessException> { operation() }
         val sqlException = generateSequence<Throwable>(failure) { it.cause }.filterIsInstance<SQLException>().first()
         assertEquals(expected, sqlException.sqlState)

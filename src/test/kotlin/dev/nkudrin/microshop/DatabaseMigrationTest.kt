@@ -4,6 +4,31 @@ import dev.nkudrin.microshop.audit.AuditActorType
 import dev.nkudrin.microshop.audit.AuditSnapshot
 import dev.nkudrin.microshop.audit.AuditWriter
 import jakarta.persistence.EntityManagerFactory
+import org.flywaydb.core.Flyway
+import org.flywaydb.core.api.FlywayException
+import org.hibernate.tool.schema.spi.SchemaManagementException
+import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.autoconfigure.ImportAutoConfiguration
+import org.springframework.boot.builder.SpringApplicationBuilder
+import org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration
+import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+import org.springframework.boot.jpa.autoconfigure.JpaProperties
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.test.context.TestConfiguration
+import org.springframework.boot.tomcat.autoconfigure.servlet.TomcatServletWebServerAutoConfiguration
+import org.springframework.context.ConfigurableApplicationContext
+import org.springframework.context.annotation.Configuration
+import org.springframework.context.annotation.Import
+import org.springframework.dao.DataAccessException
+import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.datasource.DriverManagerDataSource
+import org.springframework.orm.jpa.support.OpenEntityManagerInViewFilter
+import org.springframework.orm.jpa.support.OpenEntityManagerInViewInterceptor
+import org.springframework.test.annotation.DirtiesContext
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionTemplate
+import org.testcontainers.postgresql.PostgreSQLContainer
 import java.io.IOException
 import java.net.ServerSocket
 import java.net.URI
@@ -19,26 +44,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import org.flywaydb.core.Flyway
-import org.flywaydb.core.api.FlywayException
-import org.hibernate.tool.schema.spi.SchemaManagementException
-import org.junit.jupiter.api.Test
-import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.builder.SpringApplicationBuilder
-import org.springframework.boot.jpa.autoconfigure.JpaProperties
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.context.ConfigurableApplicationContext
-import org.springframework.context.annotation.Configuration
-import org.springframework.context.annotation.Import
-import org.springframework.dao.DataAccessException
-import org.springframework.jdbc.core.JdbcTemplate
-import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.springframework.orm.jpa.support.OpenEntityManagerInViewFilter
-import org.springframework.orm.jpa.support.OpenEntityManagerInViewInterceptor
-import org.springframework.test.annotation.DirtiesContext
-import org.springframework.transaction.PlatformTransactionManager
-import org.springframework.transaction.support.TransactionTemplate
-import org.testcontainers.postgresql.PostgreSQLContainer
 
 @SpringBootTest(
     classes = [DatabaseMigrationTest.ContainerHostConfiguration::class],
@@ -58,7 +63,14 @@ class DatabaseMigrationTest {
 
         startApplication().use { context ->
             assertJpaConfiguration(context)
-            assertEquals("2", context.getBean(Flyway::class.java).info().current().version.version)
+            assertEquals(
+                "3",
+                context
+                    .getBean(Flyway::class.java)
+                    .info()
+                    .current()
+                    .version.version,
+            )
             assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM admin_user", Int::class.java))
             insertAdmin(jdbc, admin)
             TransactionTemplate(context.getBean(PlatformTransactionManager::class.java)).executeWithoutResult {
@@ -77,7 +89,7 @@ class DatabaseMigrationTest {
         val auditBefore = jdbc.queryForList("SELECT * FROM audit_log")
         assertEquals(1, auditBefore.size)
         val historyBefore = jdbc.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank")
-        assertEquals(2, historyBefore.size)
+        assertEquals(3, historyBefore.size)
         assertTrue(historyBefore.all { it["success"] == true })
 
         startApplication().use { context ->
@@ -104,10 +116,12 @@ class DatabaseMigrationTest {
 
             insertAdmin(jdbc, adminValues().also { it[4] = false })
             assertEquals(2, jdbc.queryForObject("SELECT count(*) FROM admin_user", Int::class.java))
-            val types = jdbc.queryForList(
-                "SELECT column_name, data_type FROM information_schema.columns " +
-                    "WHERE table_schema = 'public' AND table_name = 'admin_user'",
-            ).associate { it["column_name"] as String to it["data_type"] as String }
+            val types =
+                jdbc
+                    .queryForList(
+                        "SELECT column_name, data_type FROM information_schema.columns " +
+                            "WHERE table_schema = 'public' AND table_name = 'admin_user'",
+                    ).associate { it["column_name"] as String to it["data_type"] as String }
             assertEquals(
                 mapOf(
                     "id" to "uuid",
@@ -126,26 +140,36 @@ class DatabaseMigrationTest {
     @Test
     fun `invalid test migration aborts application startup and rolls back its changes`() {
         val port = ServerSocket(0).use { it.localPort }
-        val failure = assertFailsWith<Exception> {
-            startApplication(
-                "--spring.flyway.locations=classpath:db/migration,classpath:db/invalid-migration",
-                port = port,
-            ).close()
-        }
+        val failure =
+            assertFailsWith<Exception> {
+                startMigrationProbe(includeInvalid = true, port = port).close()
+            }
         val causes = generateSequence<Throwable>(failure) { it.cause }.toList()
         assertTrue(causes.any { it is FlywayException })
         assertTrue(causes.any { it is SQLException && it.sqlState == "42703" })
-        assertTrue(causes.any { it.message?.contains("V3__invalid.sql") == true })
+        assertTrue(causes.any { it.message?.contains("V2__invalid.sql") == true })
 
         assertHealthUnavailable(port)
 
         val jdbc = database()
         assertNull(jdbc.queryForObject("SELECT to_regclass('public.migration_failure_probe')", String::class.java))
-        assertEquals(2, jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Int::class.java))
+        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Int::class.java))
+        assertEquals(1, jdbc.queryForObject("SELECT id FROM migration_baseline_probe", Int::class.java))
+        val historyBefore = jdbc.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank")
 
-        startApplication().use { context ->
-            assertEquals("2", context.getBean(Flyway::class.java).info().current().version.version)
-            assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM admin_user", Int::class.java))
+        startMigrationProbe(includeInvalid = false).use { context ->
+            assertEquals(
+                "1",
+                context
+                    .getBean(Flyway::class.java)
+                    .info()
+                    .current()
+                    .version.version,
+            )
+            assertEquals(historyBefore, jdbc.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank"))
+            assertEquals(1, jdbc.queryForObject("SELECT id FROM migration_baseline_probe", Int::class.java))
+            assertNull(jdbc.queryForObject("SELECT to_regclass('public.migration_failure_probe')", String::class.java))
+            assertNull(jdbc.queryForObject("SELECT to_regclass('public.admin_user')", String::class.java))
         }
     }
 
@@ -154,8 +178,9 @@ class DatabaseMigrationTest {
         startApplication().close()
         val jdbc = database()
         jdbc.execute("ALTER TABLE audit_log ALTER COLUMN created_at TYPE text USING created_at::text")
-        val schemaQuery = "SELECT column_name, data_type, is_nullable FROM information_schema.columns " +
-            "WHERE table_schema = 'public' AND table_name = 'audit_log' ORDER BY ordinal_position"
+        val schemaQuery =
+            "SELECT column_name, data_type, is_nullable FROM information_schema.columns " +
+                "WHERE table_schema = 'public' AND table_name = 'audit_log' ORDER BY ordinal_position"
         val schemaBefore = jdbc.queryForList(schemaQuery)
         val historyBefore = jdbc.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank")
         assertEquals("text", schemaBefore.single { it["column_name"] == "created_at" }["data_type"])
@@ -163,10 +188,12 @@ class DatabaseMigrationTest {
 
         val failure = assertFailsWith<Exception> { startApplication(port = port).close() }
         val causes = generateSequence<Throwable>(failure) { it.cause }.toList()
-        assertTrue(causes.any {
-            it is SchemaManagementException &&
-                it.message.orEmpty().contains("audit_log") && it.message.orEmpty().contains("created_at")
-        })
+        assertTrue(
+            causes.any {
+                it is SchemaManagementException &&
+                    it.message.orEmpty().contains("audit_log") && it.message.orEmpty().contains("created_at")
+            },
+        )
         assertEquals(schemaBefore, jdbc.queryForList(schemaQuery))
         assertEquals(historyBefore, jdbc.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank"))
         assertHealthUnavailable(port)
@@ -176,27 +203,60 @@ class DatabaseMigrationTest {
         HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build().use { client ->
             assertFailsWith<IOException> {
                 client.send(
-                    HttpRequest.newBuilder(URI("http://127.0.0.1:$port/actuator/health"))
-                        .timeout(Duration.ofSeconds(2)).GET().build(),
+                    HttpRequest
+                        .newBuilder(URI("http://127.0.0.1:$port/actuator/health"))
+                        .timeout(Duration.ofSeconds(2))
+                        .GET()
+                        .build(),
                     HttpResponse.BodyHandlers.discarding(),
                 )
             }
         }
     }
 
-    private fun startApplication(vararg extraArguments: String, port: Int = 0): ConfigurableApplicationContext =
+    private fun startApplication(
+        vararg extraArguments: String,
+        port: Int = 0,
+    ): ConfigurableApplicationContext =
         SpringApplicationBuilder(MicroshopApplication::class.java)
             .run(
                 "--spring.datasource.url=${postgres.jdbcUrl}",
                 "--spring.datasource.username=${postgres.username}",
                 "--spring.datasource.password=${postgres.password}",
                 "--server.port=$port",
+                "--microshop.app-secret=${TestInstallationSecrets.appSecret}",
+                "--microshop.setup-token=${TestInstallationSecrets.setupToken}",
                 *extraArguments,
             )
 
-    private fun database(): JdbcTemplate = JdbcTemplate(
-        DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password),
+    private fun database(): JdbcTemplate =
+        JdbcTemplate(
+            DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password),
+        )
+
+    private fun startMigrationProbe(
+        includeInvalid: Boolean,
+        port: Int = 0,
+    ): ConfigurableApplicationContext {
+        val locations =
+            "classpath:db/migration-failure/valid" +
+                if (includeInvalid) ",classpath:db/migration-failure/invalid" else ""
+        return SpringApplicationBuilder(MigrationProbeApplication::class.java).run(
+            "--spring.datasource.url=${postgres.jdbcUrl}",
+            "--spring.datasource.username=${postgres.username}",
+            "--spring.datasource.password=${postgres.password}",
+            "--spring.flyway.locations=$locations",
+            "--server.port=$port",
+        )
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    @ImportAutoConfiguration(
+        DataSourceAutoConfiguration::class,
+        FlywayAutoConfiguration::class,
+        TomcatServletWebServerAutoConfiguration::class,
     )
+    class MigrationProbeApplication
 
     private fun assertJpaConfiguration(context: ConfigurableApplicationContext) {
         context.getBean(DataSource::class.java).connection.use {
@@ -208,17 +268,21 @@ class DatabaseMigrationTest {
         assertTrue(context.getBeanNamesForType(OpenEntityManagerInViewFilter::class.java).isEmpty())
     }
 
-    private fun adminValues(): MutableList<Any?> = mutableListOf(
-        UUID.randomUUID(),
-        "test-${UUID.randomUUID()}",
-        "test-only-hash",
-        "Test owner",
-        true,
-        OffsetDateTime.parse("2026-01-01T00:00:00Z"),
-        OffsetDateTime.parse("2026-01-01T00:00:00Z"),
-    )
+    private fun adminValues(): MutableList<Any?> =
+        mutableListOf(
+            UUID.randomUUID(),
+            "test-${UUID.randomUUID()}",
+            "test-only-hash",
+            "Test owner",
+            true,
+            OffsetDateTime.parse("2026-01-01T00:00:00Z"),
+            OffsetDateTime.parse("2026-01-01T00:00:00Z"),
+        )
 
-    private fun insertAdmin(jdbc: JdbcTemplate, values: List<Any?>) {
+    private fun insertAdmin(
+        jdbc: JdbcTemplate,
+        values: List<Any?>,
+    ) {
         jdbc.update(
             "INSERT INTO admin_user (id, login, password_hash, display_name, enabled, created_at, updated_at) " +
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -226,7 +290,10 @@ class DatabaseMigrationTest {
         )
     }
 
-    private fun assertSqlState(expected: String, operation: () -> Unit) {
+    private fun assertSqlState(
+        expected: String,
+        operation: () -> Unit,
+    ) {
         val failure = assertFailsWith<DataAccessException> { operation() }
         val sqlException = generateSequence<Throwable>(failure) { it.cause }.filterIsInstance<SQLException>().first()
         assertEquals(expected, sqlException.sqlState)

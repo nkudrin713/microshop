@@ -13,6 +13,26 @@ spring:
     init:
       mode: never
 
+microshop:
+  app-secret: ${APP_SECRET:}
+  setup-token: ${SETUP_TOKEN:}
+
+server:
+  forward-headers-strategy: native
+  tomcat:
+    remoteip:
+      internal-proxies: ${TRUSTED_PROXY_REGEX:(?!)}
+      trusted-proxies: '(?!)'
+  servlet:
+    session:
+      timeout: 24h
+      cookie:
+        name: MICROSHOP_SESSION
+        path: /
+        http-only: true
+        secure: true
+        same-site: lax
+
 management:
   endpoints:
     access:

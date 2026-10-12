@@ -1,6 +1,5 @@
 package dev.nkudrin.microshop.api
 
-import java.net.URI
 import org.slf4j.LoggerFactory
 import org.springframework.beans.TypeMismatchException
 import org.springframework.context.MessageSourceResolvable
@@ -27,17 +26,23 @@ import org.springframework.web.method.annotation.HandlerMethodValidationExceptio
 import org.springframework.web.servlet.NoHandlerFoundException
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler
 import org.springframework.web.servlet.resource.NoResourceFoundException
+import java.net.URI
 
 @RestControllerAdvice
 class ApiExceptionHandler : ResponseEntityExceptionHandler() {
     private val log = LoggerFactory.getLogger(ApiExceptionHandler::class.java)
 
     @ExceptionHandler(ApiException::class)
-    fun handleApiException(ex: ApiException, request: WebRequest): ResponseEntity<Any> =
-        response(ex.error, ex.error.status, HttpHeaders.EMPTY, request)
+    fun handleApiException(
+        ex: ApiException,
+        request: WebRequest,
+    ): ResponseEntity<Any> = response(ex.error, ex.error.status, HttpHeaders.EMPTY, request)
 
     @ExceptionHandler(Exception::class)
-    fun handleUnexpectedException(ex: Exception, request: WebRequest): ResponseEntity<Any> {
+    fun handleUnexpectedException(
+        ex: Exception,
+        request: WebRequest,
+    ): ResponseEntity<Any> {
         logInternalError(ex)
         return response(ApiError.INTERNAL_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, HttpHeaders.EMPTY, request)
     }
@@ -59,17 +64,18 @@ class ApiExceptionHandler : ResponseEntityExceptionHandler() {
         if ((request as? ServletWebRequest)?.response?.isCommitted == true) {
             return null
         }
-        val error = when {
-            statusCode.is5xxServerError -> ApiError.INTERNAL_ERROR
-            ex is HttpMessageNotReadableException -> ApiError.MALFORMED_JSON
-            ex is MethodArgumentNotValidException || ex is HandlerMethodValidationException -> ApiError.VALIDATION_ERROR
-            ex is TypeMismatchException -> ApiError.TYPE_MISMATCH
-            ex is HttpRequestMethodNotSupportedException -> ApiError.METHOD_NOT_ALLOWED
-            ex is HttpMediaTypeNotSupportedException -> ApiError.UNSUPPORTED_MEDIA_TYPE
-            ex is HttpMediaTypeNotAcceptableException -> ApiError.NOT_ACCEPTABLE
-            ex is NoHandlerFoundException || ex is NoResourceFoundException -> ApiError.NOT_FOUND
-            else -> ApiError.INVALID_REQUEST
-        }
+        val error =
+            when {
+                statusCode.is5xxServerError -> ApiError.INTERNAL_ERROR
+                ex is HttpMessageNotReadableException -> ApiError.MALFORMED_JSON
+                ex is MethodArgumentNotValidException || ex is HandlerMethodValidationException -> ApiError.VALIDATION_ERROR
+                ex is TypeMismatchException -> ApiError.TYPE_MISMATCH
+                ex is HttpRequestMethodNotSupportedException -> ApiError.METHOD_NOT_ALLOWED
+                ex is HttpMediaTypeNotSupportedException -> ApiError.UNSUPPORTED_MEDIA_TYPE
+                ex is HttpMediaTypeNotAcceptableException -> ApiError.NOT_ACCEPTABLE
+                ex is NoHandlerFoundException || ex is NoResourceFoundException -> ApiError.NOT_FOUND
+                else -> ApiError.INVALID_REQUEST
+            }
         if (statusCode.is5xxServerError) {
             logInternalError(ex)
         }
@@ -85,58 +91,72 @@ class ApiExceptionHandler : ResponseEntityExceptionHandler() {
         request: WebRequest,
         errors: List<ValidationError> = emptyList(),
     ): ResponseEntity<Any> {
-        val problem = ProblemDetail.forStatusAndDetail(status, error.detail).apply {
-            type = URI.create("about:blank")
-            title = HttpStatus.resolve(status.value())?.reasonPhrase ?: "Error"
-            instance = URI.create((request as ServletWebRequest).request.requestURI)
-            setProperty("code", error.name)
-            if (errors.isNotEmpty()) {
-                setProperty("errors", errors.distinct().sortedWith(compareBy({ it.field.orEmpty() }, { it.code })))
+        val problem =
+            ProblemDetail.forStatusAndDetail(status, error.detail).apply {
+                type = URI.create("about:blank")
+                title = HttpStatus.resolve(status.value())?.reasonPhrase ?: "Error"
+                instance = URI.create((request as ServletWebRequest).request.requestURI)
+                setProperty("code", error.name)
+                if (errors.isNotEmpty()) {
+                    setProperty("errors", errors.distinct().sortedWith(compareBy({ it.field.orEmpty() }, { it.code })))
+                }
             }
-        }
-        val responseHeaders = HttpHeaders().apply {
-            putAll(headers)
-            contentType = MediaType.APPLICATION_PROBLEM_JSON
-        }
+        val responseHeaders =
+            HttpHeaders().apply {
+                putAll(headers)
+                contentType = MediaType.APPLICATION_PROBLEM_JSON
+            }
         return ResponseEntity(problem, responseHeaders, status)
     }
 
-    private fun validationErrors(ex: Exception): List<ValidationError> = when (ex) {
-        is MethodArgumentNotValidException -> ex.bindingResult.allErrors.map {
-            validationError((it as? FieldError)?.field, it)
-        }
-        is HandlerMethodValidationException -> {
-            ex.parameterValidationResults.flatMap { result ->
-                if (result is ParameterErrors) {
-                    result.allErrors.map { validationError((it as? FieldError)?.field, it) }
-                } else {
-                    val parameter = result.methodParameter
-                    val field = parameter.getParameterAnnotation(RequestParam::class.java)?.let {
-                        it.name.ifBlank { it.value }.ifBlank { null }
-                    } ?: parameter.getParameterAnnotation(PathVariable::class.java)?.let {
-                        it.name.ifBlank { it.value }.ifBlank { null }
-                    } ?: parameter.parameterName
-                    result.resolvableErrors.map { validationError(field, it) }
+    private fun validationErrors(ex: Exception): List<ValidationError> =
+        when (ex) {
+            is MethodArgumentNotValidException -> {
+                ex.bindingResult.allErrors.map {
+                    validationError((it as? FieldError)?.field, it)
                 }
-            } + ex.crossParameterValidationResults.map { validationError(null, it) }
-        }
-        else -> emptyList()
-    }
+            }
 
-    private fun validationError(field: String?, error: MessageSourceResolvable): ValidationError {
-        val code = error.codes?.lastOrNull()
-        val message = when (code) {
-            "NotBlank" -> "Must not be blank."
-            "NotNull" -> "Must not be null."
-            "NotEmpty" -> "Must not be empty."
-            "Size" -> "Size is outside the allowed range."
-            "Min", "Max" -> "Value is outside the allowed range."
-            "Positive" -> "Must be positive."
-            "PositiveOrZero" -> "Must be zero or positive."
-            "Email" -> "Must be a valid email address."
-            "Pattern" -> "Must match the required format."
-            else -> return ValidationError(field, "Invalid", "Invalid value.")
+            is HandlerMethodValidationException -> {
+                ex.parameterValidationResults.flatMap { result ->
+                    if (result is ParameterErrors) {
+                        result.allErrors.map { validationError((it as? FieldError)?.field, it) }
+                    } else {
+                        val parameter = result.methodParameter
+                        val field =
+                            parameter.getParameterAnnotation(RequestParam::class.java)?.let {
+                                it.name.ifBlank { it.value }.ifBlank { null }
+                            } ?: parameter.getParameterAnnotation(PathVariable::class.java)?.let {
+                                it.name.ifBlank { it.value }.ifBlank { null }
+                            } ?: parameter.parameterName
+                        result.resolvableErrors.map { validationError(field, it) }
+                    }
+                } + ex.crossParameterValidationResults.map { validationError(null, it) }
+            }
+
+            else -> {
+                emptyList()
+            }
         }
+
+    private fun validationError(
+        field: String?,
+        error: MessageSourceResolvable,
+    ): ValidationError {
+        val code = error.codes?.lastOrNull()
+        val message =
+            when (code) {
+                "NotBlank" -> "Must not be blank."
+                "NotNull" -> "Must not be null."
+                "NotEmpty" -> "Must not be empty."
+                "Size" -> "Size is outside the allowed range."
+                "Min", "Max" -> "Value is outside the allowed range."
+                "Positive" -> "Must be positive."
+                "PositiveOrZero" -> "Must be zero or positive."
+                "Email" -> "Must be a valid email address."
+                "Pattern" -> "Must match the required format."
+                else -> return ValidationError(field, "Invalid", "Invalid value.")
+            }
         return ValidationError(field, code, message)
     }
 
@@ -144,5 +164,9 @@ class ApiExceptionHandler : ResponseEntityExceptionHandler() {
         log.error("Unhandled API exception: {}", ex.javaClass.name)
     }
 
-    data class ValidationError(val field: String?, val code: String, val message: String)
+    data class ValidationError(
+        val field: String?,
+        val code: String,
+        val message: String,
+    )
 }

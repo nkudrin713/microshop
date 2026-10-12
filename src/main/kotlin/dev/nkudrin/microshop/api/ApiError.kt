@@ -9,6 +9,7 @@ enum class ApiError(val status: HttpStatus, val detail: String) {
     INVALID_REQUEST(HttpStatus.BAD_REQUEST, "The request is invalid."),
     NOT_FOUND(HttpStatus.NOT_FOUND, "The requested resource was not found."),
     CONFLICT(HttpStatus.CONFLICT, "The operation conflicts with the current state."),
+    SETTINGS_VERSION_CONFLICT(HttpStatus.CONFLICT, "The shop settings version is outdated."),
     SETUP_TOKEN_INVALID(HttpStatus.FORBIDDEN, "The setup token is invalid."),
     SETUP_ALREADY_INITIALIZED(HttpStatus.CONFLICT, "The installation is already initialized."),
     CSRF_TOKEN_INVALID(HttpStatus.FORBIDDEN, "The CSRF token is missing or invalid."),

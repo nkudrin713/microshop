@@ -3,6 +3,12 @@ package dev.nkudrin.microshop
 import dev.nkudrin.microshop.audit.AuditActorType
 import dev.nkudrin.microshop.audit.AuditSnapshot
 import dev.nkudrin.microshop.audit.AuditWriter
+import dev.nkudrin.microshop.setup.CreateOwnerRequest
+import dev.nkudrin.microshop.setup.SetupService
+import dev.nkudrin.microshop.shop.CheckoutContactRules
+import dev.nkudrin.microshop.shop.ShopSettings
+import dev.nkudrin.microshop.shop.ShopSettingsRepository
+import dev.nkudrin.microshop.shop.ShopSettingsService
 import jakarta.persistence.EntityManagerFactory
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.FlywayException
@@ -37,11 +43,13 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.sql.SQLException
 import java.time.Duration
+import java.time.Instant
 import java.time.OffsetDateTime
 import java.util.UUID
 import javax.sql.DataSource
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -64,7 +72,7 @@ class DatabaseMigrationTest {
         startApplication().use { context ->
             assertJpaConfiguration(context)
             assertEquals(
-                "4",
+                "5",
                 context
                     .getBean(Flyway::class.java)
                     .info()
@@ -89,7 +97,7 @@ class DatabaseMigrationTest {
         val auditBefore = jdbc.queryForList("SELECT * FROM audit_log")
         assertEquals(1, auditBefore.size)
         val historyBefore = jdbc.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank")
-        assertEquals(4, historyBefore.size)
+        assertEquals(5, historyBefore.size)
         assertTrue(historyBefore.all { it["success"] == true })
 
         startApplication().use { context ->
@@ -98,6 +106,125 @@ class DatabaseMigrationTest {
             assertEquals(auditBefore, jdbc.queryForList("SELECT * FROM audit_log"))
             assertEquals(historyBefore, jdbc.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank"))
         }
+    }
+
+    @Test
+    fun `shop settings are seeded before setup with defaults and database constraints`() {
+        val beforeStartup = Instant.now()
+        startApplication().use { context ->
+            val jdbc = database()
+            val settings = context.getBean(ShopSettingsRepository::class.java).findById(1).orElseThrow()
+            assertInitialSettings(settings)
+            assertTrue(!settings.updatedAt.isBefore(beforeStartup) && !settings.updatedAt.isAfter(Instant.now()))
+            assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM shop_settings", Int::class.java))
+            assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM admin_user", Int::class.java))
+            assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM audit_log", Int::class.java))
+            val columns = jdbc.queryForList(
+                "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'shop_settings'",
+                String::class.java,
+            ).toSet()
+            assertEquals(
+                setOf(
+                    "id", "name", "description", "phone", "email", "telegram", "other_contact", "sales_terms", "checkout_contact_rules",
+                    "primary_color", "background_color", "timezone", "published", "sales_enabled",
+                    "sales_disabled_reason", "version", "updated_at",
+                ),
+                columns,
+            )
+            assertSqlState("23505") { jdbc.update("INSERT INTO shop_settings (id) VALUES (1)") }
+            assertSqlState("23514") { jdbc.update("INSERT INTO shop_settings (id) VALUES (2)") }
+            assertSqlState("23514") { jdbc.update("UPDATE shop_settings SET version = -1") }
+            assertSqlState("23514") { jdbc.update("UPDATE shop_settings SET checkout_contact_rules = 'null'::jsonb") }
+        }
+    }
+
+    @Test
+    fun `JPA settings and JSON survive owner setup and restart without resetting values or timestamps`() {
+        val jdbc = database()
+        var saved: List<Map<String, Any?>> = emptyList()
+        startApplication().use { context ->
+            TransactionTemplate(context.getBean(PlatformTransactionManager::class.java)).executeWithoutResult {
+                val settings = context.getBean(ShopSettingsRepository::class.java).findById(1).orElseThrow()
+                settings.name = "Магазин"
+                settings.description = "Описание\nмагазина"
+                settings.salesTerms = "Условия\nпродажи"
+                settings.phone = "+79991234567"
+                settings.email = "owner@example.com"
+                settings.telegram = "https://t.me/owner"
+                settings.otherContact = "Другой контакт"
+                settings.checkoutContactRules = CheckoutContactRules(listOf("name", "email"), listOf(listOf("phone", "telegram")))
+                settings.primaryColor = "#ABCDEF"
+                settings.backgroundColor = "#FFFFFF"
+                settings.timezone = "Etc/UTC"
+                settings.version = 1
+                settings.updatedAt = Instant.parse("2026-10-12T00:00:00Z")
+            }
+            saved = jdbc.queryForList("SELECT * FROM shop_settings")
+            context.getBean(SetupService::class.java).createOwner(
+                CreateOwnerRequest(TestInstallationSecrets.setupToken, "owner", "123456789012345", "Owner"),
+            )
+            assertEquals(saved, jdbc.queryForList("SELECT * FROM shop_settings"))
+            assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM audit_log", Int::class.java))
+        }
+        startApplication().use { context ->
+            assertEquals(saved, jdbc.queryForList("SELECT * FROM shop_settings"))
+            val settings = context.getBean(ShopSettingsRepository::class.java).findById(1).orElseThrow()
+            assertEquals("Магазин", settings.name)
+            assertEquals("+79991234567", settings.phone)
+            assertEquals("owner@example.com", settings.email)
+            assertEquals("https://t.me/owner", settings.telegram)
+            assertEquals("Другой контакт", settings.otherContact)
+            assertEquals(CheckoutContactRules(listOf("name", "email"), listOf(listOf("phone", "telegram"))), settings.checkoutContactRules)
+            assertEquals(1, settings.version)
+        }
+    }
+
+    @Test
+    fun `settings service update and its audit survive application restart`() {
+        val jdbc = database()
+        val saved = startApplication().use { context ->
+            val owner = context.getBean(SetupService::class.java).createOwner(
+                CreateOwnerRequest(TestInstallationSecrets.setupToken, "owner", "123456789012345", "Owner"),
+            )
+            val service = context.getBean(ShopSettingsService::class.java)
+            val current = service.read()
+            service.update(
+                current.copy(name = " Сохраненный магазин ", contacts = current.contacts.copy(email = "owner@example.com")),
+                owner.id,
+            )
+        }
+        val settingsBefore = jdbc.queryForList("SELECT * FROM shop_settings")
+        val auditBefore = jdbc.queryForList("SELECT * FROM audit_log ORDER BY created_at")
+        assertEquals(2, auditBefore.size)
+        startApplication().use { context ->
+            assertEquals(saved, context.getBean(ShopSettingsService::class.java).read())
+            assertEquals("Сохраненный магазин", saved.name)
+            assertEquals(1, saved.version)
+            assertEquals(settingsBefore, jdbc.queryForList("SELECT * FROM shop_settings"))
+            assertEquals(auditBefore, jdbc.queryForList("SELECT * FROM audit_log ORDER BY created_at"))
+        }
+    }
+
+    private fun assertInitialSettings(settings: ShopSettings) {
+        assertEquals(1, settings.id)
+        assertEquals("", settings.name)
+        assertEquals("", settings.description)
+        assertEquals("", settings.salesTerms)
+        assertNull(settings.phone)
+        assertNull(settings.email)
+        assertNull(settings.telegram)
+        assertNull(settings.otherContact)
+        assertEquals(
+            CheckoutContactRules(listOf("name"), listOf(listOf("phone", "email", "telegram", "other_contact"))),
+            settings.checkoutContactRules,
+        )
+        assertNull(settings.primaryColor)
+        assertNull(settings.backgroundColor)
+        assertNull(settings.salesDisabledReason)
+        assertEquals("Europe/Moscow", settings.timezone)
+        assertFalse(settings.published)
+        assertFalse(settings.salesEnabled)
+        assertEquals(0, settings.version)
     }
 
     @Test

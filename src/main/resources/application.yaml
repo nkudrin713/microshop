@@ -1,6 +1,10 @@
 spring:
   application:
     name: microshop
+  datasource:
+    hikari:
+      data-source-properties:
+        logServerErrorDetail: false
   flyway:
     enabled: true
     locations: classpath:db/migration

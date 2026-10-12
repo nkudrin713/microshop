@@ -147,32 +147,24 @@ class ApiExceptionHandlerTest {
         assertNoSensitiveValues(result, output)
     }
 
-    private fun expectProblem(
-        request: MockHttpServletRequestBuilder,
-        error: ApiError,
-        instance: String,
-    ): MvcResult =
-        mvc
-            .perform(
-                request
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer AUTH_SECRET")
-                    .cookie(Cookie("SESSION", "COOKIE_SECRET")),
-            ).andExpect(status().`is`(error.status.value()))
-            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-            .andExpect(jsonPath("$.type").value("about:blank"))
-            .andExpect(jsonPath("$.title").value(error.status.reasonPhrase))
-            .andExpect(jsonPath("$.status").value(error.status.value()))
-            .andExpect(jsonPath("$.detail").value(error.detail))
-            .andExpect(jsonPath("$.instance").value(instance))
-            .andExpect(jsonPath("$.code").value(error.name))
-            .andExpect(jsonPath("$.exception").doesNotExist())
-            .andExpect(jsonPath("$.trace").doesNotExist())
-            .andReturn()
+    private fun expectProblem(request: MockHttpServletRequestBuilder, error: ApiError, instance: String): MvcResult = mvc
+        .perform(
+            request
+                .header(HttpHeaders.AUTHORIZATION, "Bearer AUTH_SECRET")
+                .cookie(Cookie("SESSION", "COOKIE_SECRET")),
+        ).andExpect(status().`is`(error.status.value()))
+        .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+        .andExpect(jsonPath("$.type").value("about:blank"))
+        .andExpect(jsonPath("$.title").value(error.status.reasonPhrase))
+        .andExpect(jsonPath("$.status").value(error.status.value()))
+        .andExpect(jsonPath("$.detail").value(error.detail))
+        .andExpect(jsonPath("$.instance").value(instance))
+        .andExpect(jsonPath("$.code").value(error.name))
+        .andExpect(jsonPath("$.exception").doesNotExist())
+        .andExpect(jsonPath("$.trace").doesNotExist())
+        .andReturn()
 
-    private fun assertNoSensitiveValues(
-        result: MvcResult,
-        output: CapturedOutput,
-    ) {
+    private fun assertNoSensitiveValues(result: MvcResult, output: CapturedOutput) {
         listOf("BODY_SECRET", "QUERY_SECRET", "AUTH_SECRET", "COOKIE_SECRET", "SQL_SECRET", "PASSWORD_SECRET", "MESSAGE_SECRET")
             .forEach { secret ->
                 assertFalse(result.response.contentAsString.contains(secret), "Sensitive value in response: $secret")
@@ -184,31 +176,22 @@ class ApiExceptionHandlerTest {
     @RequestMapping(PATH)
     class TestController {
         @PostMapping("/input", consumes = [MediaType.APPLICATION_JSON_VALUE])
-        fun input(
-            @Valid @RequestBody input: Input,
-        ): Input = input
+        fun input(@Valid @RequestBody input: Input): Input = input
 
         @GetMapping("/parameters", produces = [MediaType.APPLICATION_JSON_VALUE])
-        fun parameters(
-            @RequestParam count: Int,
-        ): Map<String, Int> = mapOf("count" to count)
+        fun parameters(@RequestParam count: Int): Map<String, Int> = mapOf("count" to count)
 
         @GetMapping("/validated-parameters")
-        fun validatedParameters(
-            @RequestParam("count") @Min(1) count: Int,
-        ): Map<String, Int> = mapOf("count" to count)
+        fun validatedParameters(@RequestParam("count") @Min(1) count: Int): Map<String, Int> = mapOf("count" to count)
 
         @GetMapping("/failure")
-        fun failure(): Nothing =
-            throw IllegalStateException(
-                "SQL_SECRET SELECT password_hash FROM admin_user",
-                RuntimeException("PASSWORD_SECRET"),
-            )
+        fun failure(): Nothing = throw IllegalStateException(
+            "SQL_SECRET SELECT password_hash FROM admin_user",
+            RuntimeException("PASSWORD_SECRET"),
+        )
 
         @GetMapping("/operation/{error}")
-        fun operation(
-            @PathVariable error: ApiError,
-        ): Nothing = throw ApiException(error)
+        fun operation(@PathVariable error: ApiError): Nothing = throw ApiException(error)
     }
 
     data class Input(

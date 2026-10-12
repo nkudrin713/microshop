@@ -161,20 +161,19 @@ class AuditWriterTest {
         }
     }
 
-    private fun prepareAdmin(): UUID =
-        UUID.randomUUID().also { id ->
-            jdbc.update(
-                "INSERT INTO admin_user (id, login, password_hash, display_name, enabled, created_at, updated_at) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                id,
-                "test-owner",
-                "test-only-hash",
-                "Original",
-                true,
-                OffsetDateTime.now(),
-                OffsetDateTime.now(),
-            )
-        }
+    private fun prepareAdmin(): UUID = UUID.randomUUID().also { id ->
+        jdbc.update(
+            "INSERT INTO admin_user (id, login, password_hash, display_name, enabled, created_at, updated_at) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            id,
+            "test-owner",
+            "test-only-hash",
+            "Original",
+            true,
+            OffsetDateTime.now(),
+            OffsetDateTime.now(),
+        )
+    }
 
     private fun changeAdmin(adminId: UUID) {
         assertEquals(1, jdbc.update("UPDATE admin_user SET display_name = 'Updated' WHERE id = ?", adminId))
@@ -187,29 +186,27 @@ class AuditWriterTest {
 
     private fun auditCount(): Int? = jdbc.queryForObject("SELECT count(*) FROM audit_log", Int::class.java)
 
-    private fun snapshotSource(name: String): Map<String, Any?> =
-        mapOf(
-            "display_name" to name,
-            "enabled" to true,
-            "count" to 3,
-            "note" to null,
-            "password_hash" to "control-password",
-            "token" to "control-token",
-            "secrets" to mapOf("nested" to "control-secret"),
-        )
+    private fun snapshotSource(name: String): Map<String, Any?> = mapOf(
+        "display_name" to name,
+        "enabled" to true,
+        "count" to 3,
+        "note" to null,
+        "password_hash" to "control-password",
+        "token" to "control-token",
+        "secrets" to mapOf("nested" to "control-secret"),
+    )
 
-    private fun auditValues(adminId: UUID?): MutableList<Any?> =
-        mutableListOf(
-            UUID.randomUUID(),
-            "ADMIN",
-            adminId,
-            "TEST_UPDATE",
-            "test_object",
-            "42",
-            null,
-            null,
-            OffsetDateTime.now(),
-        )
+    private fun auditValues(adminId: UUID?): MutableList<Any?> = mutableListOf(
+        UUID.randomUUID(),
+        "ADMIN",
+        adminId,
+        "TEST_UPDATE",
+        "test_object",
+        "42",
+        null,
+        null,
+        OffsetDateTime.now(),
+    )
 
     private fun insertAudit(values: List<Any?>) {
         jdbc.update(
@@ -219,10 +216,7 @@ class AuditWriterTest {
         )
     }
 
-    private fun assertSqlState(
-        expected: String,
-        operation: () -> Unit,
-    ) {
+    private fun assertSqlState(expected: String, operation: () -> Unit) {
         val failure = assertFailsWith<DataAccessException> { operation() }
         val sqlException = generateSequence<Throwable>(failure) { it.cause }.filterIsInstance<SQLException>().first()
         assertEquals(expected, sqlException.sqlState)

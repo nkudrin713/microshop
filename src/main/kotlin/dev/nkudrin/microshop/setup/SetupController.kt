@@ -10,15 +10,11 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @RequestMapping("/api/setup")
-class SetupController(
-    private val service: SetupService,
-) {
+class SetupController(private val service: SetupService) {
     @GetMapping("/status")
     fun status(): SetupStatus = service.status()
 
     @PostMapping("/owner")
     @ResponseStatus(HttpStatus.CREATED)
-    fun createOwner(
-        @RequestBody request: CreateOwnerRequest,
-    ): OwnerResponse = service.createOwner(request)
+    fun createOwner(@RequestBody request: CreateOwnerRequest): OwnerResponse = service.createOwner(request)
 }

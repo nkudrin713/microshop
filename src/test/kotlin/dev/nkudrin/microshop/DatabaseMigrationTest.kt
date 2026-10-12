@@ -214,10 +214,7 @@ class DatabaseMigrationTest {
         }
     }
 
-    private fun startApplication(
-        vararg extraArguments: String,
-        port: Int = 0,
-    ): ConfigurableApplicationContext =
+    private fun startApplication(vararg extraArguments: String, port: Int = 0): ConfigurableApplicationContext =
         SpringApplicationBuilder(MicroshopApplication::class.java)
             .run(
                 "--spring.datasource.url=${postgres.jdbcUrl}",
@@ -229,15 +226,11 @@ class DatabaseMigrationTest {
                 *extraArguments,
             )
 
-    private fun database(): JdbcTemplate =
-        JdbcTemplate(
-            DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password),
-        )
+    private fun database(): JdbcTemplate = JdbcTemplate(
+        DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password),
+    )
 
-    private fun startMigrationProbe(
-        includeInvalid: Boolean,
-        port: Int = 0,
-    ): ConfigurableApplicationContext {
+    private fun startMigrationProbe(includeInvalid: Boolean, port: Int = 0): ConfigurableApplicationContext {
         val locations =
             "classpath:db/migration-failure/valid" +
                 if (includeInvalid) ",classpath:db/migration-failure/invalid" else ""
@@ -268,21 +261,17 @@ class DatabaseMigrationTest {
         assertTrue(context.getBeanNamesForType(OpenEntityManagerInViewFilter::class.java).isEmpty())
     }
 
-    private fun adminValues(): MutableList<Any?> =
-        mutableListOf(
-            UUID.randomUUID(),
-            "test-${UUID.randomUUID()}",
-            "test-only-hash",
-            "Test owner",
-            true,
-            OffsetDateTime.parse("2026-01-01T00:00:00Z"),
-            OffsetDateTime.parse("2026-01-01T00:00:00Z"),
-        )
+    private fun adminValues(): MutableList<Any?> = mutableListOf(
+        UUID.randomUUID(),
+        "test-${UUID.randomUUID()}",
+        "test-only-hash",
+        "Test owner",
+        true,
+        OffsetDateTime.parse("2026-01-01T00:00:00Z"),
+        OffsetDateTime.parse("2026-01-01T00:00:00Z"),
+    )
 
-    private fun insertAdmin(
-        jdbc: JdbcTemplate,
-        values: List<Any?>,
-    ) {
+    private fun insertAdmin(jdbc: JdbcTemplate, values: List<Any?>) {
         jdbc.update(
             "INSERT INTO admin_user (id, login, password_hash, display_name, enabled, created_at, updated_at) " +
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -290,10 +279,7 @@ class DatabaseMigrationTest {
         )
     }
 
-    private fun assertSqlState(
-        expected: String,
-        operation: () -> Unit,
-    ) {
+    private fun assertSqlState(expected: String, operation: () -> Unit) {
         val failure = assertFailsWith<DataAccessException> { operation() }
         val sqlException = generateSequence<Throwable>(failure) { it.cause }.filterIsInstance<SQLException>().first()
         assertEquals(expected, sqlException.sqlState)

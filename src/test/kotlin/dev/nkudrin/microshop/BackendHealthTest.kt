@@ -140,10 +140,7 @@ class BackendHealthTest {
         }
     }
 
-    private fun assertHealth(
-        status: Int,
-        health: String,
-    ) {
+    private fun assertHealth(status: Int, health: String) {
         val response = request("/actuator/health")
         assertEquals(status, response.statusCode())
         assertEquals(json.readTree("{\"status\":\"$health\"}"), json.readTree(response.body()))

@@ -7,10 +7,7 @@ import org.springframework.stereotype.Component
 
 @Component
 @DependsOnDatabaseInitialization
-class InstallationInitializer(
-    private val service: InstallationService,
-    private val environment: Environment,
-) {
+class InstallationInitializer(private val service: InstallationService, private val environment: Environment) {
     @PostConstruct
     fun initialize() {
         service.initialize(environment.getProperty("microshop.app-secret"), environment.getProperty("microshop.setup-token"))

@@ -7,9 +7,7 @@ import java.time.Instant
 import java.util.UUID
 
 @Service
-class AuditWriter(
-    private val repository: AuditLogRepository,
-) {
+class AuditWriter(private val repository: AuditLogRepository) {
     @Transactional(propagation = Propagation.MANDATORY, rollbackFor = [Exception::class])
     fun record(
         actorType: AuditActorType,

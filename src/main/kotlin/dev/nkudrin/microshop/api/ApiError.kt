@@ -2,10 +2,7 @@ package dev.nkudrin.microshop.api
 
 import org.springframework.http.HttpStatus
 
-enum class ApiError(
-    val status: HttpStatus,
-    val detail: String,
-) {
+enum class ApiError(val status: HttpStatus, val detail: String) {
     MALFORMED_JSON(HttpStatus.BAD_REQUEST, "The request body is missing or malformed."),
     TYPE_MISMATCH(HttpStatus.BAD_REQUEST, "A request parameter has an invalid type."),
     VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "Request validation failed."),

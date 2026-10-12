@@ -83,15 +83,14 @@ class PostgresEnvironmentTest {
         }
     }
 
-    private fun probeRowCount(): Int =
-        dataSource.connection.use { connection ->
-            connection.createStatement().use { statement ->
-                statement.executeQuery("SELECT count(*) FROM environment_probe").use {
-                    it.next()
-                    it.getInt(1)
-                }
+    private fun probeRowCount(): Int = dataSource.connection.use { connection ->
+        connection.createStatement().use { statement ->
+            statement.executeQuery("SELECT count(*) FROM environment_probe").use {
+                it.next()
+                it.getInt(1)
             }
         }
+    }
 
     @Configuration(proxyBeanMethods = false)
     @ImportAutoConfiguration(DataSourceAutoConfiguration::class, ServiceConnectionAutoConfiguration::class)

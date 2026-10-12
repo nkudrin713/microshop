@@ -50,11 +50,7 @@ class SetupService(
         return OwnerResponse(owner.id, owner.login, owner.displayName)
     }
 
-    private fun validateOwnerData(
-        login: String,
-        password: String,
-        displayName: String,
-    ) {
+    private fun validateOwnerData(login: String, password: String, displayName: String) {
         if (!Regex("[A-Za-z0-9]{3,64}").matches(login) ||
             password.codePointCount(0, password.length) !in 15..128 ||
             displayName.codePointCount(0, displayName.length) !in 1..100 ||
@@ -72,30 +68,19 @@ class SetupService(
             entityType = "ADMIN_USER",
             entityId = owner.id.toString(),
             after =
-                AuditSnapshot.select(
-                    mapOf("id" to owner.id.toString(), "login" to owner.login, "displayName" to owner.displayName, "enabled" to true),
-                    "id",
-                    "login",
-                    "displayName",
-                    "enabled",
-                ),
+            AuditSnapshot.select(
+                mapOf("id" to owner.id.toString(), "login" to owner.login, "displayName" to owner.displayName, "enabled" to true),
+                "id",
+                "login",
+                "displayName",
+                "enabled",
+            ),
         )
     }
 }
 
-class CreateOwnerRequest(
-    val setupToken: String,
-    val login: String,
-    val password: String,
-    val displayName: String,
-)
+class CreateOwnerRequest(val setupToken: String, val login: String, val password: String, val displayName: String)
 
-data class OwnerResponse(
-    val id: UUID,
-    val login: String,
-    val displayName: String,
-)
+data class OwnerResponse(val id: UUID, val login: String, val displayName: String)
 
-data class SetupStatus(
-    val initialized: Boolean,
-)
+data class SetupStatus(val initialized: Boolean)

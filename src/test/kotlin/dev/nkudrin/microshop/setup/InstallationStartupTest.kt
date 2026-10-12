@@ -195,10 +195,7 @@ class InstallationStartupTest {
         assertStartupRejected("--server.tomcat.remoteip.internal-proxies=", expectedMessage = "Proxy trust must be explicitly restricted")
     }
 
-    private fun assertStartupRejected(
-        vararg args: String,
-        expectedMessage: String,
-    ) {
+    private fun assertStartupRejected(vararg args: String, expectedMessage: String) {
         val port = ServerSocket(0).use { it.localPort }
         val failure = assertFailsWith<Exception> { start(*args, port = port).close() }
         assertTrue(
@@ -221,10 +218,7 @@ class InstallationStartupTest {
         }
     }
 
-    private fun start(
-        vararg args: String,
-        port: Int = 0,
-    ): ConfigurableApplicationContext =
+    private fun start(vararg args: String, port: Int = 0): ConfigurableApplicationContext =
         SpringApplicationBuilder(MicroshopApplication::class.java).run(
             *(
                 listOf(
@@ -235,15 +229,12 @@ class InstallationStartupTest {
                     "--microshop.setup-token=${TestInstallationSecrets.setupToken}",
                     "--server.port=$port",
                 ).filter { default -> args.none { it.substringBefore('=') == default.substringBefore('=') } } + args
-            ).toTypedArray(),
+                ).toTypedArray(),
         )
 
     private fun database(): JdbcTemplate = JdbcTemplate(DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password))
 
-    private fun assertSqlState(
-        expected: String,
-        operation: () -> Unit,
-    ) {
+    private fun assertSqlState(expected: String, operation: () -> Unit) {
         val failure = assertFailsWith<DataAccessException> { operation() }
         assertEquals(expected, generateSequence<Throwable>(failure) { it.cause }.filterIsInstance<SQLException>().first().sqlState)
     }

@@ -64,15 +64,14 @@ class SetupTransportTest {
                     ),
                 )
 
-            fun setup() =
-                send(
-                    request("/api/setup/owner")
-                        .header("X-Forwarded-Proto", "https")
-                        .header("Cookie", cookie.substringBefore(';'))
-                        .header("X-CSRF-TOKEN", token)
-                        .header("Content-Type", "application/json")
-                        .POST(HttpRequest.BodyPublishers.ofString(body)),
-                )
+            fun setup() = send(
+                request("/api/setup/owner")
+                    .header("X-Forwarded-Proto", "https")
+                    .header("Cookie", cookie.substringBefore(';'))
+                    .header("X-CSRF-TOKEN", token)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body)),
+            )
             assertEquals(201, setup().statusCode())
             assertEquals(409, setup().statusCode())
             val denied = send(request("/api/admin/settings").header("X-Forwarded-Proto", "https").GET())

@@ -9,14 +9,10 @@ import org.springframework.web.bind.annotation.RestController
 @RestController
 class CsrfController {
     @GetMapping("/api/csrf")
-    fun csrf(token: CsrfToken): ResponseEntity<CsrfResponse> =
-        ResponseEntity
-            .ok()
-            .cacheControl(CacheControl.noStore())
-            .body(CsrfResponse(token.token, token.headerName))
+    fun csrf(token: CsrfToken): ResponseEntity<CsrfResponse> = ResponseEntity
+        .ok()
+        .cacheControl(CacheControl.noStore())
+        .body(CsrfResponse(token.token, token.headerName))
 }
 
-data class CsrfResponse(
-    val token: String,
-    val headerName: String,
-)
+data class CsrfResponse(val token: String, val headerName: String)

@@ -70,11 +70,7 @@ class SecurityConfiguration {
         return http.build()
     }
 
-    private fun validateTransportConfiguration(
-        dev: Boolean,
-        environment: Environment,
-        server: ServerProperties,
-    ) {
+    private fun validateTransportConfiguration(dev: Boolean, environment: Environment, server: ServerProperties) {
         if (dev) {
             check(server.address?.isLoopbackAddress == true) { "The dev profile requires a loopback server address." }
             check(server.forwardHeadersStrategy == ServerProperties.ForwardHeadersStrategy.NONE) {
@@ -93,14 +89,8 @@ class SecurityConfiguration {
         }
     }
 
-    private class HttpsFilter(
-        private val errors: HandlerExceptionResolver,
-    ) : OncePerRequestFilter() {
-        override fun doFilterInternal(
-            request: HttpServletRequest,
-            response: HttpServletResponse,
-            chain: FilterChain,
-        ) {
+    private class HttpsFilter(private val errors: HandlerExceptionResolver) : OncePerRequestFilter() {
+        override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, chain: FilterChain) {
             val path = request.servletPath + request.pathInfo.orEmpty()
             val protected =
                 path == "/api/csrf" || path == "/api/setup" || path.startsWith("/api/setup/") ||

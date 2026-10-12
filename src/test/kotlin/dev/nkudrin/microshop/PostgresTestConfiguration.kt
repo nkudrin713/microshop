@@ -9,17 +9,15 @@ import org.testcontainers.postgresql.PostgreSQLContainer
 @TestConfiguration(proxyBeanMethods = false)
 class PostgresTestConfiguration {
     @Bean
-    fun installationProperties(): DynamicPropertyRegistrar =
-        DynamicPropertyRegistrar { registry ->
-            registry.add("microshop.app-secret") { TestInstallationSecrets.appSecret }
-            registry.add("microshop.setup-token") { TestInstallationSecrets.setupToken }
-        }
+    fun installationProperties(): DynamicPropertyRegistrar = DynamicPropertyRegistrar { registry ->
+        registry.add("microshop.app-secret") { TestInstallationSecrets.appSecret }
+        registry.add("microshop.setup-token") { TestInstallationSecrets.setupToken }
+    }
 
     @Bean
     @ServiceConnection
-    fun postgres(): PostgreSQLContainer =
-        PostgreSQLContainer("postgres:18.6")
-            .withDatabaseName("microshop_test")
-            .withUsername("microshop_test")
-            .withPassword("microshop_test")
+    fun postgres(): PostgreSQLContainer = PostgreSQLContainer("postgres:18.6")
+        .withDatabaseName("microshop_test")
+        .withUsername("microshop_test")
+        .withPassword("microshop_test")
 }

@@ -33,16 +33,11 @@ class ApiExceptionHandler : ResponseEntityExceptionHandler() {
     private val log = LoggerFactory.getLogger(ApiExceptionHandler::class.java)
 
     @ExceptionHandler(ApiException::class)
-    fun handleApiException(
-        ex: ApiException,
-        request: WebRequest,
-    ): ResponseEntity<Any> = response(ex.error, ex.error.status, HttpHeaders.EMPTY, request)
+    fun handleApiException(ex: ApiException, request: WebRequest): ResponseEntity<Any> =
+        response(ex.error, ex.error.status, HttpHeaders.EMPTY, request)
 
     @ExceptionHandler(Exception::class)
-    fun handleUnexpectedException(
-        ex: Exception,
-        request: WebRequest,
-    ): ResponseEntity<Any> {
+    fun handleUnexpectedException(ex: Exception, request: WebRequest): ResponseEntity<Any> {
         logInternalError(ex)
         return response(ApiError.INTERNAL_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, HttpHeaders.EMPTY, request)
     }
@@ -109,40 +104,36 @@ class ApiExceptionHandler : ResponseEntityExceptionHandler() {
         return ResponseEntity(problem, responseHeaders, status)
     }
 
-    private fun validationErrors(ex: Exception): List<ValidationError> =
-        when (ex) {
-            is MethodArgumentNotValidException -> {
-                ex.bindingResult.allErrors.map {
-                    validationError((it as? FieldError)?.field, it)
-                }
-            }
-
-            is HandlerMethodValidationException -> {
-                ex.parameterValidationResults.flatMap { result ->
-                    if (result is ParameterErrors) {
-                        result.allErrors.map { validationError((it as? FieldError)?.field, it) }
-                    } else {
-                        val parameter = result.methodParameter
-                        val field =
-                            parameter.getParameterAnnotation(RequestParam::class.java)?.let {
-                                it.name.ifBlank { it.value }.ifBlank { null }
-                            } ?: parameter.getParameterAnnotation(PathVariable::class.java)?.let {
-                                it.name.ifBlank { it.value }.ifBlank { null }
-                            } ?: parameter.parameterName
-                        result.resolvableErrors.map { validationError(field, it) }
-                    }
-                } + ex.crossParameterValidationResults.map { validationError(null, it) }
-            }
-
-            else -> {
-                emptyList()
+    private fun validationErrors(ex: Exception): List<ValidationError> = when (ex) {
+        is MethodArgumentNotValidException -> {
+            ex.bindingResult.allErrors.map {
+                validationError((it as? FieldError)?.field, it)
             }
         }
 
-    private fun validationError(
-        field: String?,
-        error: MessageSourceResolvable,
-    ): ValidationError {
+        is HandlerMethodValidationException -> {
+            ex.parameterValidationResults.flatMap { result ->
+                if (result is ParameterErrors) {
+                    result.allErrors.map { validationError((it as? FieldError)?.field, it) }
+                } else {
+                    val parameter = result.methodParameter
+                    val field =
+                        parameter.getParameterAnnotation(RequestParam::class.java)?.let {
+                            it.name.ifBlank { it.value }.ifBlank { null }
+                        } ?: parameter.getParameterAnnotation(PathVariable::class.java)?.let {
+                            it.name.ifBlank { it.value }.ifBlank { null }
+                        } ?: parameter.parameterName
+                    result.resolvableErrors.map { validationError(field, it) }
+                }
+            } + ex.crossParameterValidationResults.map { validationError(null, it) }
+        }
+
+        else -> {
+            emptyList()
+        }
+    }
+
+    private fun validationError(field: String?, error: MessageSourceResolvable): ValidationError {
         val code = error.codes?.lastOrNull()
         val message =
             when (code) {
@@ -164,9 +155,5 @@ class ApiExceptionHandler : ResponseEntityExceptionHandler() {
         log.error("Unhandled API exception: {}", ex.javaClass.name)
     }
 
-    data class ValidationError(
-        val field: String?,
-        val code: String,
-        val message: String,
-    )
+    data class ValidationError(val field: String?, val code: String, val message: String)
 }

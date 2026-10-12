@@ -39,9 +39,5 @@ class AuditSnapshotTest {
         }
     }
 
-    private data class TestCredentials(
-        val password: String,
-        val token: String,
-        val secret: String,
-    )
+    private data class TestCredentials(val password: String, val token: String, val secret: String)
 }

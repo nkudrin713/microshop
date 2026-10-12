@@ -14,10 +14,7 @@ class InstallationService(
     private val entities: EntityManager,
 ) {
     @Transactional
-    fun initialize(
-        appSecret: String?,
-        setupToken: String?,
-    ) {
+    fun initialize(appSecret: String?, setupToken: String?) {
         val key =
             SetupSecrets.decode(appSecret)
                 ?: throw IllegalStateException("APP_SECRET must be canonical Base64URL encoding of 32 bytes.")

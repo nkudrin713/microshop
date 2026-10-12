@@ -298,17 +298,16 @@ class SetupIntegrationTest {
 
     companion object {
         @JvmStatic
-        fun invalidOwnerValues(): List<List<String>> =
-            listOf(
-                listOf("ab", "123456789012345", "Owner"),
-                listOf("a".repeat(65), "123456789012345", "Owner"),
-                listOf("owner_name", "123456789012345", "Owner"),
-                listOf("Kowner", "123456789012345", "Owner"),
-                listOf("владелец", "123456789012345", "Owner"),
-                listOf("owner", "😀".repeat(14), "Owner"),
-                listOf("owner", "😀".repeat(129), "Owner"),
-                listOf("owner", "123456789012345", "   "),
-                listOf("owner", "123456789012345", "😀".repeat(101)),
-            )
+        fun invalidOwnerValues(): List<List<String>> = listOf(
+            listOf("ab", "123456789012345", "Owner"),
+            listOf("a".repeat(65), "123456789012345", "Owner"),
+            listOf("owner_name", "123456789012345", "Owner"),
+            listOf("Kowner", "123456789012345", "Owner"),
+            listOf("владелец", "123456789012345", "Owner"),
+            listOf("owner", "😀".repeat(14), "Owner"),
+            listOf("owner", "😀".repeat(129), "Owner"),
+            listOf("owner", "123456789012345", "   "),
+            listOf("owner", "123456789012345", "😀".repeat(101)),
+        )
     }
 }

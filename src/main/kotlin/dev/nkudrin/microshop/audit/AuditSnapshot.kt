@@ -4,14 +4,9 @@ import java.math.BigDecimal
 import java.math.BigInteger
 import java.util.Collections
 
-class AuditSnapshot private constructor(
-    internal val data: Map<String, Any?>,
-) {
+class AuditSnapshot private constructor(internal val data: Map<String, Any?>) {
     companion object {
-        fun select(
-            source: Map<String, Any?>,
-            vararg allowedFields: String,
-        ): AuditSnapshot {
+        fun select(source: Map<String, Any?>, vararg allowedFields: String): AuditSnapshot {
             require(allowedFields.isNotEmpty()) { "Audit snapshot requires an explicit field allowlist" }
             val selected =
                 allowedFields.associateWith { field ->
@@ -23,12 +18,11 @@ class AuditSnapshot private constructor(
             return AuditSnapshot(Collections.unmodifiableMap(selected))
         }
 
-        private fun isScalar(value: Any?): Boolean =
-            when (value) {
-                null, is String, is Boolean, is Byte, is Short, is Int, is Long, is BigInteger, is BigDecimal -> true
-                is Float -> value.isFinite()
-                is Double -> value.isFinite()
-                else -> false
-            }
+        private fun isScalar(value: Any?): Boolean = when (value) {
+            null, is String, is Boolean, is Byte, is Short, is Int, is Long, is BigInteger, is BigDecimal -> true
+            is Float -> value.isFinite()
+            is Double -> value.isFinite()
+            else -> false
+        }
     }
 }
